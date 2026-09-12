@@ -1,0 +1,13 @@
+# PHP runtime artifacts
+php-server.pid
+php-server.log
+
+# Python cache and logs
+__pycache__/
+*.pyc
+vision/video_log.txt
+vision/video_err.txt
+
+# Local media / generated snapshots
+vision/*.mp4
+assets/snapshots/

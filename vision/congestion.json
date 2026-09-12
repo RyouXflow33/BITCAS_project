@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-09-05T18:05:01.194246",
+  "congestion_level": "MODERATE",
+  "color": "#f39c12",
+  "label": "MODERATE",
+  "vehicle_count": 7,
+  "detections_count": 7,
+  "source": "traffic_vision_system",
+  "vehicle_types": {
+    "car": 6,
+    "bus": 1
+  },
+  "positions": [
+    0.66875,
+    0.60859375,
+    0.7515625,
+    0.478125,
+    0.89453125,
+    0.70859375,
+    0.43671875
+  ],
+  "avg_position": 0.6495535714285714,
+  "position_std": 0.14669611609826733,
+  "avg_speed": 31.893891075819333,
+  "speed_std": 19.389734022851222,
+  "max_speed": 59.95998129393502,
+  "min_speed": 0.0
+}
