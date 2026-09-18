@@ -1002,15 +1002,18 @@ class TrafficVisionSystem:
                         (x1, max(12, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
         overlay = annotated.copy()
-        cv2.rectangle(overlay, (5, 5), (295, 112), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (5, 5), (360, 136), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.6, annotated, 0.4, 0, annotated)
-        cv2.rectangle(annotated, (5, 5), (295, 112), (255, 255, 255), 1)
+        cv2.rectangle(annotated, (5, 5), (360, 136), (255, 255, 255), 1)
 
+        roi_tracks = [track for track in tracks if self._in_roi(track.centroid)]
+        occupancy_pct = self._occupancy_fraction(roi_tracks) * 100
         fps = sum(self._fps_samples) / len(self._fps_samples) if self._fps_samples else 0.0
         lines = [
-            f"{level}  score {score}",
-            f"In frame: {len(tracks)}   Today: {self.daily_totals['total']}",
-            f"FPS {fps:.1f}  {self.detector.backend}"
+            f"{level}  score {score}  (MOD {self.congestion.moderate}  HEV {self.congestion.heavy})",
+            f"In frame: {len(roi_tracks)}   Today: {self.daily_totals['total']}",
+            f"Occupancy {occupancy_pct:.0f}%   load {len(roi_tracks)}/{self.congestion.capacity}",
+            f"FPS {fps:.1f}  {self.detector.backend}  speed {'off' if not self.calibration.enabled else 'on'}"
         ]
         for index, text in enumerate(lines):
             cv2.putText(annotated, text, (14, 32 + index * 26),
@@ -1090,6 +1093,8 @@ class TrafficVisionSystem:
                                   if payload['avg_speed_kph'] is not None else "speed n/a")
                     print(f"[{datetime.now():%H:%M:%S}] {level} {score}% | "
                           f"{payload['vehicles_in_frame']} in frame | "
+                          f"occ {payload['occupancy_pct']}% load "
+                          f"{payload['vehicles_in_frame']}/{self.congestion.capacity} | "
                           f"{self.daily_totals['total']} today | {speed_text}")
 
                     self.pending_crossings = []
