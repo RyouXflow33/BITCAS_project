@@ -1,702 +1,1165 @@
 ﻿"""
-Traffic Vision System - Python-based vehicle detection and congestion analysis
-for integration with the web-based traffic monitoring system.
+BITCAS Traffic Vision System (v2)
 
-This script processes video to detect and track vehicles, determines congestion
-levels based on vehicle count/density, and writes the results to a JSON file
-that the web system can read.
+Detects and tracks vehicles from a camera or video file, counts each vehicle
+ONCE as it crosses a virtual counting line, measures road occupancy and real
+ground speed, and publishes a JSON payload the PHP dashboard consumes.
+
+What changed from v1 and why it matters:
+
+  * `vehicle_count` used to be "vehicles visible in this frame" -- an occupancy
+    sample, not throughput. A car idling in view was counted every publish. v2
+    adds counting lines, so `totals.today` is a real vehicle count and
+    `flow.per_minute` is real throughput.
+  * Congestion was one of three fixed scores (30/60/90). v2 computes a
+    continuous 0-100 score from occupancy, load and slowness, with a fourth
+    CRITICAL band.
+  * Speed was pixels/second, which depends on how far the car is from the lens.
+    v2 applies a ground-plane homography (see calibrate.py) and reports km/h.
+  * History was a 650 KB JSON file re-read and rewritten every 3 seconds --
+    roughly 18 GB/day of SD-card writes. v2 appends one aggregated line per
+    minute to a JSONL file instead.
+
+Run `python calibrate.py` first to draw the ROI, the counting line and the
+speed calibration on a real frame. The defaults in site_config.json work
+uncalibrated, but speed stays in px/s until you calibrate.
 """
 
-import cv2
+import argparse
 import json
-import time
-import os
 import math
-from datetime import datetime
+import os
+import threading
+import time
 from collections import defaultdict, deque
+from datetime import datetime, date
+
+import cv2
+import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'assets', 'data'))
-DEFAULT_CONGESTION_FILE = os.path.join(WEB_DATA_DIR, 'congestion.json')
 WEB_SNAPSHOT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'assets', 'snapshots'))
 SNAPSHOT_URL_PREFIX = 'assets/snapshots'
 
-# Try to import YOLO, fallback to simpler detection if not available
+DEFAULT_CONFIG_FILE = os.path.join(SCRIPT_DIR, 'site_config.json')
+DEFAULT_CONGESTION_FILE = os.path.join(WEB_DATA_DIR, 'congestion.json')
+
+LEVEL_COLORS = {
+    'LIGHT': '#27ae60',
+    'MODERATE': '#f39c12',
+    'HEAVY': '#e74c3c',
+    'CRITICAL': '#8b1a1a'
+}
+
+COCO_VEHICLES = {2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
+
 try:
     from ultralytics import YOLO
     YOLO_AVAILABLE = True
 except ImportError:
     YOLO_AVAILABLE = False
-    print("Warning: ultralytics not available. Using basic OpenCV detection.")
 
 
-class TrafficVisionSystem:
-    def __init__(self, video_source=0, output_file=DEFAULT_CONGESTION_FILE, update_interval=3,
-                 inference_size=416, confidence_threshold=0.5):
-        """
-        Initialize the traffic vision system.
+# --------------------------------------------------------------------------
+# Configuration
+# --------------------------------------------------------------------------
 
-        Args:
-            video_source: Camera index (0 for default) or path to video file
-            output_file: Path to JSON file where congestion data will be written
-            update_interval: Seconds between dashboard payload updates
-            inference_size: Square YOLO inference size; lower values reduce Pi CPU load
-            confidence_threshold: Minimum YOLO confidence for vehicle detections
-        """
-        self.video_source = video_source
-        self.output_file = os.path.abspath(output_file)
-        self.update_interval = max(0.1, float(update_interval))
-        self.inference_size = max(320, int(inference_size))
-        self.confidence_threshold = min(0.95, max(0.1, float(confidence_threshold)))
-        self.cap = None
-        self.snapshot_cooldown_seconds = 15 * 60
-        self.last_snapshot_time = 0.0
-        self.max_snapshots = 100
+CONFIG_DEFAULTS = {
+    'camera_id': 'CAM-01',
+    'site_name': 'Unnamed site',
+    'road_name': '',
+    'lat': None,
+    'lng': None,
+    'roi': {'calibrated': False, 'polygon': [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]},
+    'counting_lines': [{
+        'id': 'main', 'calibrated': False,
+        'start': [0.05, 0.55], 'end': [0.95, 0.55],
+        'positive_direction': 'inbound', 'negative_direction': 'outbound'
+    }],
+    'lanes': [],
+    'calibration': {'calibrated': False, 'image_points': [], 'world_points': []},
+    'congestion': {
+        'capacity_vehicles': 20,
+        'free_flow_kph': 40.0,
+        'weights': {'occupancy': 0.45, 'load': 0.30, 'slowness': 0.25},
+        'bands': {'moderate': 40, 'heavy': 65, 'critical': 85},
+        'smoothing_window_seconds': 30
+    },
+    'tracking': {
+        'max_match_distance_px': 60,
+        'max_age_seconds': 2.0,
+        'min_speed_samples': 5,
+        'max_plausible_kph': 120
+    },
+    'publish': {
+        'update_interval_seconds': 3,
+        'history_interval_seconds': 60,
+        'snapshot_cooldown_seconds': 900,
+        'snapshot_streak': 3,
+        'max_snapshots': 100,
+        'spool_days': 3
+    }
+}
 
-        # Vehicle detection setup
-        if YOLO_AVAILABLE:
-            # Load pre-trained YOLOv8n model (nano version for speed)
-            # This model is trained on COCO dataset which includes vehicles
-            self.model = YOLO(os.path.join(SCRIPT_DIR, 'yolov8n.pt'))
-            self.vehicle_classes = [2, 3, 5, 7]  # car, motorcycle, bus, truck in COCO
-            # Map class IDs to vehicle names
-            self.class_to_name = {
-                2: 'car',
-                3: 'motorcycle',
-                5: 'bus',
-                7: 'truck'
-            }
+
+def _deep_merge(base, override):
+    """Merge override into a copy of base, recursing into nested dicts."""
+    result = dict(base)
+    for key, value in (override or {}).items():
+        if key.startswith('_'):
+            continue
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
         else:
-            # Fallback to Haar cascades or basic motion detection
-            self.vehicle_cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + 'haarcascade_car.xml'
-            )
-            self.vehicle_classes = [1]  # car class for Haar cascade
-            self.class_to_name = {1: 'car'}
+            result[key] = value
+    return result
 
-        # Tracking and counting
-        self.frame_count = 0
-        self.vehicle_counts = defaultdict(int)
-        self.congestion_history = deque(maxlen=30)  # Keep last 30 frames for smoothing
-        # Keep history beside the current payload so the dashboard can read both.
-        self.history_file = os.path.join(os.path.dirname(self.output_file), 'traffic_history.json')
-        self.history_limit = 1000  # Keep last 1000 entries
-        # Simple speed tracking (store last N positions with timestamps)
-        self.speed_history = defaultdict(lambda: deque(maxlen=10))  # Track ID -> positions
-        self.next_track_id = 0
-        self.tracked_vehicles = {}  # Map detection to track ID
 
-        # Congestion thresholds (vehicles per frame)
-        # These may need adjustment based on your camera angle and road width
-        self.LIGHT_THRESHOLD = 5
-        self.MODERATE_THRESHOLD = 15
+def load_site_config(path):
+    """Load site_config.json, falling back to built-in defaults for any gaps."""
+    if not os.path.exists(path):
+        print(f"Warning: {path} not found, using built-in defaults.")
+        return dict(CONFIG_DEFAULTS)
+    with open(path, 'r', encoding='utf-8') as handle:
+        return _deep_merge(CONFIG_DEFAULTS, json.load(handle))
 
-        # Colors and labels matching the web system
-        self.congestion_levels = {
-            'LIGHT': {'color': '#27ae60', 'label': 'LIGHT'},
-            'MODERATE': {'color': '#f39c12', 'label': 'MODERATE'},
-            'HEAVY': {'color': '#e74c3c', 'label': 'HEAVY'}
-        }
 
-        print(f"Traffic Vision System initialized")
-        print(f"Video source: {video_source}")
-        print(f"Output file: {self.output_file}")
-        print(f"History file: {self.history_file}")
-        print(f"Inference size: {self.inference_size}")
-        print(f"YOLO available: {YOLO_AVAILABLE}")
+# --------------------------------------------------------------------------
+# Geometry
+# --------------------------------------------------------------------------
 
-    @staticmethod
-    def _atomic_write_json(path, data):
-        """Write JSON atomically so web pollers never read a partially-written file."""
-        output_dir = os.path.dirname(path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
+def to_pixels(point, width, height):
+    return (float(point[0]) * width, float(point[1]) * height)
 
-        temp_path = path + '.tmp'
-        with open(temp_path, 'w') as f:
-            json.dump(data, f, indent=2)
-        os.replace(temp_path, path)
 
-    def start_capture(self):
-        """Start video capture from source."""
-        self.cap = cv2.VideoCapture(self.video_source)
-        if not self.cap.isOpened():
-            raise ValueError(f"Cannot open video source: {self.video_source}")
+def segments_intersect(p1, p2, p3, p4):
+    """True when segment p1-p2 crosses segment p3-p4."""
+    def orientation(a, b, c):
+        value = (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1])
+        if abs(value) < 1e-9:
+            return 0
+        return 1 if value > 0 else 2
 
-        # Set properties for better performance
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        # Get actual FPS
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        if self.fps <= 0:
-            self.fps = 30  # fallback
+    o1, o2 = orientation(p1, p2, p3), orientation(p1, p2, p4)
+    o3, o4 = orientation(p3, p4, p1), orientation(p3, p4, p2)
+    return o1 != o2 and o3 != o4
 
-        print(f"Video capture started successfully (FPS: {self.fps})")
 
-    def detect_vehicles_yolo(self, frame):
-        """
-        Detect vehicles using YOLO model.
+class CountingLine:
+    """A virtual line; a track crossing it produces exactly one count."""
 
-        Returns:
-            List of detections, each detection is [x1, y1, x2, y2, confidence, class_id]
-        """
+    def __init__(self, config, width, height):
+        self.id = config.get('id', 'main')
+        self.start = to_pixels(config['start'], width, height)
+        self.end = to_pixels(config['end'], width, height)
+        self.positive_direction = config.get('positive_direction', 'inbound')
+        self.negative_direction = config.get('negative_direction', 'outbound')
+
+        # Normal points to the "positive" side of the line.
+        dx = self.end[0] - self.start[0]
+        dy = self.end[1] - self.start[1]
+        self.normal = (-dy, dx)
+
+    def _side(self, point):
+        vx = point[0] - self.start[0]
+        vy = point[1] - self.start[1]
+        return self.normal[0] * vx + self.normal[1] * vy
+
+    def crossing_direction(self, previous_point, current_point):
+        """Return a direction label if the track just crossed, else None."""
+        before, after = self._side(previous_point), self._side(current_point)
+        if before == 0 or after == 0 or (before > 0) == (after > 0):
+            return None
+        # Sign change alone would also fire past the line's endpoints.
+        if not segments_intersect(previous_point, current_point, self.start, self.end):
+            return None
+        return self.positive_direction if after > 0 else self.negative_direction
+
+
+class Calibration:
+    """Maps image pixels to ground-plane metres via a 4-point homography."""
+
+    def __init__(self, config):
+        self.enabled = False
+        self._matrix = None
+        self._config = config
+
+    def build(self, width, height):
+        config = self._config
+        if not config.get('calibrated'):
+            return
+        image_points = config.get('image_points') or []
+        world_points = config.get('world_points') or []
+        if len(image_points) != 4 or len(world_points) != 4:
+            print("Warning: calibration needs exactly 4 image and 4 world points. Speed stays in px/s.")
+            return
+
+        source = np.array([to_pixels(p, width, height) for p in image_points], dtype=np.float32)
+        target = np.array(world_points, dtype=np.float32)
+        self._matrix = cv2.getPerspectiveTransform(source, target)
+        self.enabled = True
+        print("Speed calibration active: reporting km/h.")
+
+    def to_world(self, point):
+        """Convert one (x, y) pixel to (X, Y) metres on the ground plane."""
+        if not self.enabled:
+            return None
+        source = np.array([[[float(point[0]), float(point[1])]]], dtype=np.float32)
+        result = cv2.perspectiveTransform(source, self._matrix)
+        return (float(result[0][0][0]), float(result[0][0][1]))
+
+
+# --------------------------------------------------------------------------
+# Capture
+# --------------------------------------------------------------------------
+
+class FrameGrabber:
+    """
+    Reads frames on a background thread and keeps only the newest one.
+
+    Without this the main loop falls behind the camera's buffer: each read()
+    returns an older frame than the last, so on a Pi the overlay drifts seconds
+    behind reality. Dropping stale frames keeps the analysis live.
+    """
+
+    def __init__(self, source, width=640, height=480):
+        self.capture = cv2.VideoCapture(source)
+        if not self.capture.isOpened():
+            raise ValueError(f"Cannot open video source: {source}")
+
+        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        try:
+            self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except cv2.error:
+            pass
+
+        self.is_file = isinstance(source, str) and os.path.exists(source)
+        self._lock = threading.Lock()
+        self._frame = None
+        self._stopped = False
+        self._finished = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stopped:
+            ok, frame = self.capture.read()
+            if not ok:
+                self._finished = True
+                break
+            with self._lock:
+                self._frame = frame
+            if self.is_file:
+                # Video files have no natural pacing; without this the whole
+                # file races through in seconds.
+                time.sleep(0.02)
+
+    def read(self):
+        with self._lock:
+            frame = self._frame
+            self._frame = None
+        return frame
+
+    @property
+    def finished(self):
+        return self._finished
+
+    def release(self):
+        self._stopped = True
+        self._thread.join(timeout=1.0)
+        self.capture.release()
+
+
+# --------------------------------------------------------------------------
+# Detection
+# --------------------------------------------------------------------------
+
+class VehicleDetector:
+    """YOLO (NCNN or PyTorch) with a Haar cascade as a last resort."""
+
+    def __init__(self, backend='auto', inference_size=416, confidence=0.5):
+        self.inference_size = max(320, int(inference_size))
+        self.confidence = min(0.95, max(0.1, float(confidence)))
+        self.backend = self._select_backend(backend)
+
+        if self.backend == 'ncnn':
+            self.model = YOLO(os.path.join(SCRIPT_DIR, 'yolov8n_ncnn_model'), task='detect')
+        elif self.backend == 'pytorch':
+            self.model = YOLO(os.path.join(SCRIPT_DIR, 'yolov8n.pt'))
+        else:
+            self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_car.xml')
+
+        print(f"Detector backend: {self.backend} (imgsz={self.inference_size}, conf={self.confidence})")
+
+    def _select_backend(self, requested):
+        ncnn_dir = os.path.join(SCRIPT_DIR, 'yolov8n_ncnn_model')
+        if requested == 'auto':
+            if YOLO_AVAILABLE and os.path.isdir(ncnn_dir):
+                return 'ncnn'
+            if YOLO_AVAILABLE:
+                return 'pytorch'
+            print("Warning: ultralytics not installed. Falling back to Haar cascade (low accuracy).")
+            return 'haar'
+        if requested in ('ncnn', 'pytorch') and not YOLO_AVAILABLE:
+            print(f"Warning: '{requested}' requested but ultralytics is missing. Using Haar cascade.")
+            return 'haar'
+        if requested == 'ncnn' and not os.path.isdir(ncnn_dir):
+            print("Warning: yolov8n_ncnn_model/ not found. Export it with:")
+            print("         yolo export model=yolov8n.pt format=ncnn")
+            print("         Falling back to PyTorch.")
+            return 'pytorch' if YOLO_AVAILABLE else 'haar'
+        return requested
+
+    def detect(self, frame):
+        """Return a list of {bbox, confidence, class_name} for vehicles only."""
+        if self.backend == 'haar':
+            return self._detect_haar(frame)
+        return self._detect_yolo(frame)
+
+    def _detect_yolo(self, frame):
         results = self.model(
             frame,
             verbose=False,
             imgsz=self.inference_size,
-            conf=self.confidence_threshold,
-            classes=self.vehicle_classes
+            conf=self.confidence,
+            classes=list(COCO_VEHICLES)
         )
         detections = []
-
         for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                # Get box coordinates, confidence, and class
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                confidence = box.conf[0].cpu().numpy()
-                class_id = int(box.cls[0].cpu().numpy())
-
-                # Filter for vehicle classes only
-                if class_id in self.vehicle_classes and confidence >= self.confidence_threshold:
-                    detections.append([int(x1), int(y1), int(x2), int(y2), float(confidence), class_id])
-
+            for box in result.boxes:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                class_id = int(box.cls[0])
+                if class_id not in COCO_VEHICLES:
+                    continue
+                detections.append({
+                    'bbox': (int(x1), int(y1), int(x2), int(y2)),
+                    'confidence': float(box.conf[0]),
+                    'class_name': COCO_VEHICLES[class_id]
+                })
         return detections
 
-    def detect_vehicles_basic(self, frame):
-        """
-        Basic vehicle detection using Haar cascades (fallback).
-
-        Returns:
-            List of detections, each detection is [x, y, w, h]
-        """
+    def _detect_haar(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        vehicles = self.vehicle_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=3,
-            minSize=(30, 30)
-        )
+        boxes = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+        return [{
+            'bbox': (int(x), int(y), int(x + w), int(y + h)),
+            'confidence': 0.8,
+            'class_name': 'car'
+        } for (x, y, w, h) in boxes]
 
-        detections = []
-        for (x, y, w, h) in vehicles:
-            detections.append([x, y, x+w, y+h, 0.8, 2])  # format: [x1,y1,x2,y2,conf,class]
 
-        return detections
+# --------------------------------------------------------------------------
+# Tracking
+# --------------------------------------------------------------------------
 
-    def detect_vehicles(self, frame):
-        """
-        Detect vehicles in frame using available method.
+class Track:
+    """One vehicle followed across frames."""
 
-        Returns:
-            List of detections with tracking IDs and speed estimates
-        """
-        if YOLO_AVAILABLE:
-            detections = self.detect_vehicles_yolo(frame)
-        else:
-            detections = self.detect_vehicles_basic(frame)
+    __slots__ = ('id', 'class_name', 'bbox', 'centroid', 'last_seen', 'misses',
+                 'pixel_history', 'world_history', 'counted_lines', 'speed_kph', 'speed_pps')
 
-        # Simple tracking: associate detections with previous frame detections
-        tracked_detections = self.update_tracks(detections, frame.shape[1])
+    def __init__(self, track_id, detection, centroid, now):
+        self.id = track_id
+        self.class_name = detection['class_name']
+        self.bbox = detection['bbox']
+        self.centroid = centroid
+        self.last_seen = now
+        self.misses = 0
+        self.pixel_history = deque(maxlen=30)
+        self.world_history = deque(maxlen=30)
+        self.counted_lines = set()
+        self.speed_kph = None
+        self.speed_pps = 0.0
+        self.pixel_history.append((now, centroid[0], centroid[1]))
 
-        return tracked_detections
+    @property
+    def previous_centroid(self):
+        if len(self.pixel_history) < 2:
+            return None
+        entry = self.pixel_history[-2]
+        return (entry[1], entry[2])
 
-    def update_tracks(self, detections, frame_width):
-        """
-        Simple centroid-based tracking to assign IDs and estimate speed.
 
-        Args:
-            detections: List of raw detections [x1, y1, x2, y2, confidence, class_id]
-            frame_width: Width of the frame for normalization
+class CentroidTracker:
+    """
+    Nearest-centroid association keyed by track ID.
 
-        Returns:
-            List of detections with tracking info: [x1, y1, x2, y2, confidence, class_id, track_id, speed]
-        """
-        if not detections:
-            # If no detections, just return empty list and decay existing tracks
-            # Decay track history (remove old entries)
-            for track_id in list(self.speed_history.keys()):
-                if len(self.speed_history[track_id]) == 0:
-                    del self.speed_history[track_id]
-                    if track_id in self.tracked_vehicles:
-                        del self.tracked_vehicles[track_id]
-            return []
+    v1 keyed its track map by detection index, which is meaningless between
+    frames. Tracks here own their own history, which is what makes per-vehicle
+    counting and least-squares speed possible.
+    """
 
-        # Convert detections to centroids
-        centroids = []
-        for detection in detections:
-            x1, y1, x2, y2, conf, cls = detection
-            centroid_x = (x1 + x2) / 2
-            centroid_y = (y1 + y2) / 2
-            centroids.append((centroid_x, centroid_y))
+    def __init__(self, config, calibration):
+        self.max_distance = float(config['max_match_distance_px'])
+        self.max_age = float(config['max_age_seconds'])
+        self.min_speed_samples = int(config['min_speed_samples'])
+        self.max_plausible_kph = float(config['max_plausible_kph'])
+        self.calibration = calibration
+        self.tracks = {}
+        self._next_id = 1
 
-        # If no existing tracks, assign new IDs to all detections
-        if not self.speed_history:
-            for i, detection in enumerate(detections):
-                track_id = self.next_track_id
-                self.next_track_id += 1
-                self.speed_history[track_id].append((time.time(), centroids[i][0], centroids[i][1]))
-                self.tracked_vehicles[i] = track_id
-                # Add tracking info to detection
-                detections[i].append(track_id)  # track_id
-                detections[i].append(0.0)       # speed (0 for first frame)
-            return detections
+    def update(self, detections, now):
+        """Associate detections with existing tracks; return the live tracks."""
+        centroids = [((d['bbox'][0] + d['bbox'][2]) / 2.0,
+                      (d['bbox'][1] + d['bbox'][3]) / 2.0) for d in detections]
 
-        # Associate detections with existing tracks using closest centroid
-        assigned_tracks = {}
-        used_track_ids = set()
+        # Greedy nearest-neighbour: the shortest candidate pair wins first, so
+        # one close match cannot be stolen by a more distant detection.
+        candidates = []
+        for det_index, centroid in enumerate(centroids):
+            for track_id, track in self.tracks.items():
+                distance = math.hypot(centroid[0] - track.centroid[0], centroid[1] - track.centroid[1])
+                if distance <= self.max_distance:
+                    candidates.append((distance, det_index, track_id))
+        candidates.sort()
 
-        for det_idx, detection in enumerate(detections):
-            det_centroid = centroids[det_idx]
-            best_track_id = None
-            min_distance = float('inf')
+        assignments = {}
+        taken_detections = set()
+        taken_tracks = set()
+        for _distance, det_index, track_id in candidates:
+            if det_index in taken_detections or track_id in taken_tracks:
+                continue
+            assignments[det_index] = track_id
+            taken_detections.add(det_index)
+            taken_tracks.add(track_id)
 
-            # Find closest existing track
-            for track_id, history in self.speed_history.items():
-                if track_id in used_track_ids:
-                    continue
-                if len(history) == 0:
-                    continue
-                # Get last position
-                last_time, last_x, last_y = history[-1]
-                distance = math.sqrt((det_centroid[0] - last_x)**2 + (det_centroid[1] - last_y)**2)
-                if distance < min_distance:
-                    min_distance = distance
-                    best_track_id = track_id
+        updated_ids = []
+        for det_index, detection in enumerate(detections):
+            centroid = centroids[det_index]
+            track_id = assignments.get(det_index)
 
-            # If close enough, assign to existing track, otherwise create new track
-            if best_track_id is not None and min_distance < 50:  # threshold pixels
-                assigned_tracks[det_idx] = best_track_id
-                used_track_ids.add(best_track_id)
-                # Update track history
-                self.speed_history[best_track_id].append((time.time(), det_centroid[0], det_centroid[1]))
-                self.tracked_vehicles[det_idx] = best_track_id
+            if track_id is None:
+                track_id = self._next_id
+                self._next_id += 1
+                track = Track(track_id, detection, centroid, now)
+                self.tracks[track_id] = track
             else:
-                # Create new track
-                track_id = self.next_track_id
-                self.next_track_id += 1
-                assigned_tracks[det_idx] = track_id
-                self.speed_history[track_id].append((time.time(), det_centroid[0], det_centroid[1]))
-                self.tracked_vehicles[det_idx] = track_id
+                track = self.tracks[track_id]
+                track.bbox = detection['bbox']
+                track.centroid = centroid
+                track.class_name = detection['class_name']
+                track.last_seen = now
+                track.misses = 0
+                track.pixel_history.append((now, centroid[0], centroid[1]))
 
-        # Add tracking info and speed to detections
-        for det_idx, detection in enumerate(detections):
-            track_id = assigned_tracks[det_idx]
-            # Calculate speed if we have enough history
-            speed = self.calculate_speed(track_id, frame_width)
-            # Add tracking info to detection: [x1, y1, x2, y2, confidence, class_id, track_id, speed]
-            detection.append(track_id)
-            detection.append(speed)
+            world = self.calibration.to_world(centroid)
+            if world is not None:
+                track.world_history.append((now, world[0], world[1]))
+            self._update_speed(track)
+            updated_ids.append(track_id)
 
-        # Clean up old tracks (optional)
-        # Remove tracks that haven't been updated in a while
-        current_time = time.time()
-        tracks_to_delete = []
-        for track_id, history in self.speed_history.items():
-            if track_id not in used_track_ids and len(history) > 0:
-                last_time = history[-1][0]
-                if current_time - last_time > 2.0:  # 2 seconds timeout
-                    tracks_to_delete.append(track_id)
-        for track_id in tracks_to_delete:
-            del self.speed_history[track_id]
-            # Note: We don't remove from tracked_vehicles as it's detection-index based
+        for track_id in list(self.tracks):
+            track = self.tracks[track_id]
+            if track_id not in taken_tracks and track_id not in updated_ids:
+                track.misses += 1
+            if now - track.last_seen > self.max_age:
+                del self.tracks[track_id]
 
-        return detections
+        return [self.tracks[track_id] for track_id in updated_ids]
 
-    def calculate_speed(self, track_id, frame_width):
+    def _update_speed(self, track):
         """
-        Calculate speed in pixels per second for a tracked vehicle.
+        Least-squares velocity over the track's history.
 
-        Args:
-            track_id: ID of the track
-            frame_width: Width of the frame for scaling
-
-        Returns:
-            Speed in pixels per second (0 if not enough data)
+        v1 differenced only the last two centroids, which is extremely noisy at
+        low frame rates. Fitting a line over N points averages that out.
         """
-        if track_id not in self.speed_history:
-            return 0.0
+        history = track.world_history if self.calibration.enabled else track.pixel_history
+        if len(history) < max(2, self.min_speed_samples):
+            return
 
-        history = self.speed_history[track_id]
-        if len(history) < 2:
-            return 0.0
+        times = np.array([point[0] for point in history], dtype=np.float64)
+        times = times - times[0]
+        if times[-1] <= 0:
+            return
+        xs = np.array([point[1] for point in history], dtype=np.float64)
+        ys = np.array([point[2] for point in history], dtype=np.float64)
 
-        # Use the last two points for speed calculation
-        # Note: This is simplistic - better would be to use linear regression over N points
-        time_diff = history[-1][0] - history[-2][0]
-        if time_diff <= 0:
-            return 0.0
+        vx = np.polyfit(times, xs, 1)[0]
+        vy = np.polyfit(times, ys, 1)[0]
+        magnitude = math.hypot(float(vx), float(vy))
 
-        # Calculate distance moved
-        dist_x = history[-1][1] - history[-2][1]
-        dist_y = history[-1][2] - history[-2][2]
-        distance = math.sqrt(dist_x**2 + dist_y**2)
-
-        # Speed in pixels per second
-        speed = distance / time_diff
-        return speed
-
-    def calculate_congestion_level(self, detections):
-        """
-        Calculate congestion level based on number of vehicle detections.
-
-        Args:
-            detections: List of vehicle detections from current frame
-
-        Returns:
-            Tuple of (level_key, level_info) where level_key is 'LIGHT', 'MODERATE', or 'HEAVY'
-        """
-        vehicle_count = len(detections)
-
-        # Add to history for smoothing
-        self.congestion_history.append(vehicle_count)
-
-        # Use average of recent frames to reduce noise
-        if len(self.congestion_history) > 0:
-            avg_vehicles = sum(self.congestion_history) / len(self.congestion_history)
+        if self.calibration.enabled:
+            kph = magnitude * 3.6
+            track.speed_kph = kph if 0.0 <= kph <= self.max_plausible_kph else None
         else:
-            avg_vehicles = vehicle_count
+            track.speed_pps = magnitude
 
-        # Determine congestion level
-        if avg_vehicles >= self.MODERATE_THRESHOLD:
-            level_key = 'HEAVY'
-        elif avg_vehicles >= self.LIGHT_THRESHOLD:
-            level_key = 'MODERATE'
+
+# --------------------------------------------------------------------------
+# Congestion scoring
+# --------------------------------------------------------------------------
+
+class CongestionModel:
+    """
+    Continuous 0-100 score from three normalised signals.
+
+    v1 emitted only 30, 60 or 90, so every downstream average and chart was
+    drawn from a three-valued signal. Occupancy carries most of the weight
+    because it is the one measure that stays meaningful regardless of camera
+    angle or distance.
+    """
+
+    def __init__(self, config):
+        self.capacity = max(1, int(config['capacity_vehicles']))
+        self.free_flow_kph = max(1.0, float(config['free_flow_kph']))
+        weights = config['weights']
+        self.w_occupancy = float(weights['occupancy'])
+        self.w_load = float(weights['load'])
+        self.w_slowness = float(weights['slowness'])
+        bands = config['bands']
+        self.moderate = int(bands['moderate'])
+        self.heavy = int(bands['heavy'])
+        self.critical = int(bands['critical'])
+        self.window_seconds = float(config['smoothing_window_seconds'])
+        self._samples = deque()
+
+    def smooth(self, vehicle_count, now):
+        """
+        Time-based smoothing window.
+
+        v1 used deque(maxlen=30) appended once per frame, so at 25 FPS the
+        "smoothing" covered about one second.
+        """
+        self._samples.append((now, vehicle_count))
+        while self._samples and now - self._samples[0][0] > self.window_seconds:
+            self._samples.popleft()
+        return sum(sample[1] for sample in self._samples) / len(self._samples)
+
+    def score(self, occupancy_fraction, smoothed_count, avg_speed_kph):
+        occupancy = min(1.0, max(0.0, occupancy_fraction))
+        load = min(1.0, smoothed_count / self.capacity)
+        if avg_speed_kph is None:
+            # Uncalibrated: redistribute the slowness weight onto the signals
+            # we can actually measure rather than inventing a speed.
+            total = self.w_occupancy + self.w_load
+            value = (self.w_occupancy * occupancy + self.w_load * load) / total
         else:
-            level_key = 'LIGHT'
+            slowness = min(1.0, max(0.0, 1.0 - (avg_speed_kph / self.free_flow_kph)))
+            value = (self.w_occupancy * occupancy + self.w_load * load + self.w_slowness * slowness)
 
-        level_info = self.congestion_levels[level_key]
+        score = int(round(100 * value))
+        return max(0, min(100, score))
 
-        return level_key, level_info, vehicle_count
+    def level(self, score):
+        if score >= self.critical:
+            return 'CRITICAL'
+        if score >= self.heavy:
+            return 'HEAVY'
+        if score >= self.moderate:
+            return 'MODERATE'
+        return 'LIGHT'
 
-    def write_congestion_data(self, level_key, level_info, vehicle_count, detections=None, frame_width=640, snapshot_url=None):
-        """
-        Write congestion data to JSON file.
 
-        Args:
-            level_key: Congestion level key ('LIGHT', 'MODERATE', 'HEAVY')
-            level_info: Dictionary with color and label
-            vehicle_count: Number of vehicles detected
-            detections: Optional list of detections for debugging
-            frame_width: Width of the frame (for position calculation)
-        """
-        # Initialize data structure
-        data = {
-            'timestamp': datetime.now().isoformat(),
-            'congestion_level': level_key,
-            'color': level_info['color'],
-            'label': level_info['label'],
-            'vehicle_count': vehicle_count,
-            'detections_count': len(detections) if detections else 0,
-            'smoothed_vehicle_count': round(sum(self.congestion_history) / len(self.congestion_history), 2) if self.congestion_history else vehicle_count,
-            'source': 'traffic_vision_system'
+# --------------------------------------------------------------------------
+# Output
+# --------------------------------------------------------------------------
+
+class TelemetryWriter:
+    """
+    Writes the live payload, plus append-only logs for history and crossings.
+
+    v1 read, parsed and rewrote a 650 KB history file every 3 seconds --
+    ~18 GB/day onto the SD card, and the parse blocked the detection loop.
+    Appending one aggregated line per minute is ~0.4 MB/day and never reads.
+    """
+
+    def __init__(self, current_file, data_dir):
+        self.current_file = os.path.abspath(current_file)
+        self.history_file = os.path.join(data_dir, 'traffic_history.jsonl')
+        # Hourly rollup: minute records are too many for a browser to hold more
+        # than a couple of days, but heatmaps and prediction need weeks. This is
+        # the same rollup the Phase 2 database cron will produce.
+        self.hourly_file = os.path.join(data_dir, 'traffic_hourly.jsonl')
+        self.crossings_file = os.path.join(data_dir, 'crossings.jsonl')
+        os.makedirs(data_dir, exist_ok=True)
+
+    @staticmethod
+    def _atomic_write_json(path, data):
+        """Write via .tmp + os.replace so pollers never read a partial file."""
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        temp_path = path + '.tmp'
+        with open(temp_path, 'w', encoding='utf-8') as handle:
+            json.dump(data, handle, indent=2)
+        os.replace(temp_path, path)
+
+    @staticmethod
+    def _append_line(path, record):
+        with open(path, 'a', encoding='utf-8') as handle:
+            handle.write(json.dumps(record) + '\n')
+
+    def write_current(self, payload):
+        try:
+            self._atomic_write_json(self.current_file, payload)
+        except OSError as error:
+            print(f"Error writing {self.current_file}: {error}")
+
+    def append_history(self, record):
+        try:
+            self._append_line(self.history_file, record)
+        except OSError as error:
+            print(f"Error appending history: {error}")
+
+    def append_hourly(self, record):
+        try:
+            self._append_line(self.hourly_file, record)
+        except OSError as error:
+            print(f"Error appending hourly rollup: {error}")
+
+    def append_crossings(self, crossings):
+        if not crossings:
+            return
+        try:
+            with open(self.crossings_file, 'a', encoding='utf-8') as handle:
+                for crossing in crossings:
+                    handle.write(json.dumps(crossing) + '\n')
+        except OSError as error:
+            print(f"Error appending crossings: {error}")
+
+
+def aggregate_minute_records(records, camera_id, bucket_start, congestion_model):
+    """
+    Collapse a list of minute records into one hourly rollup.
+
+    `weekday` and `hour` are stored explicitly so the dashboard can build an
+    hour-by-weekday heatmap without re-parsing every timestamp.
+    """
+    speeds = [r['avg_speed_kph'] for r in records if r.get('avg_speed_kph') is not None]
+    classes = defaultdict(int)
+    directions = defaultdict(int)
+    for record in records:
+        for name, count in (record.get('vehicle_types') or {}).items():
+            classes[name] += count
+        for name, count in (record.get('by_direction') or {}).items():
+            directions[name] += count
+
+    mean_score = sum(r['congestion_score'] for r in records) / len(records)
+    return {
+        'camera_id': camera_id,
+        'timestamp': bucket_start.isoformat(timespec='seconds'),
+        'weekday': bucket_start.weekday(),
+        'hour': bucket_start.hour,
+        'samples': len(records),
+        'congestion_score': round(mean_score, 1),
+        'congestion_level': congestion_model.level(int(round(mean_score))),
+        'peak_congestion_score': max(r.get('peak_congestion_score', r['congestion_score']) for r in records),
+        'vehicles_in_frame_avg': round(sum(r['vehicles_in_frame_avg'] for r in records) / len(records), 2),
+        'vehicles_in_frame_peak': max(r['vehicles_in_frame_peak'] for r in records),
+        'occupancy_pct': round(sum(r['occupancy_pct'] for r in records) / len(records), 1),
+        'avg_speed_kph': round(sum(speeds) / len(speeds), 1) if speeds else None,
+        'speed_calibrated': any(r.get('speed_calibrated') for r in records),
+        'crossings': sum(r['crossings'] for r in records),
+        'vehicle_types': dict(classes),
+        'by_direction': dict(directions)
+    }
+
+
+# --------------------------------------------------------------------------
+# Main system
+# --------------------------------------------------------------------------
+
+class TrafficVisionSystem:
+    def __init__(self, video_source=0, config_file=DEFAULT_CONFIG_FILE,
+                 output_file=DEFAULT_CONGESTION_FILE, backend='auto',
+                 inference_size=416, confidence_threshold=0.5, detect_every=1,
+                 update_interval=None):
+        self.config = load_site_config(config_file)
+        publish = self.config['publish']
+
+        self.video_source = video_source
+        self.detect_every = max(1, int(detect_every))
+        self.update_interval = float(update_interval or publish['update_interval_seconds'])
+        self.history_interval = float(publish['history_interval_seconds'])
+        self.snapshot_cooldown = float(publish['snapshot_cooldown_seconds'])
+        self.snapshot_streak_target = int(publish['snapshot_streak'])
+        self.max_snapshots = int(publish['max_snapshots'])
+
+        self.detector = VehicleDetector(backend, inference_size, confidence_threshold)
+        self.calibration = Calibration(self.config['calibration'])
+        self.tracker = CentroidTracker(self.config['tracking'], self.calibration)
+        self.congestion = CongestionModel(self.config['congestion'])
+        self.writer = TelemetryWriter(output_file, WEB_DATA_DIR)
+
+        self.grabber = None
+        self.frame_size = None
+        self.roi_polygon = None
+        self.roi_mask = None
+        self.roi_area = 1.0
+        self.counting_lines = []
+
+        self.started_at = time.time()
+        self.frame_count = 0
+        self._fps_samples = deque(maxlen=30)
+        self._last_frame_time = None
+
+        self.pending_crossings = []
+        self.window_crossings = []
+        self.daily_totals = self._empty_totals()
+        self.totals_date = date.today()
+        self.history_bucket = []
+        self.last_history_flush = time.monotonic()
+        self.hour_bucket = []
+        self.current_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
+        self.last_snapshot_time = 0.0
+        self.heavy_streak = 0
+
+        print(f"BITCAS vision node | site: {self.config['site_name']} ({self.config['camera_id']})")
+        print(f"Source: {video_source} | output: {os.path.abspath(output_file)}")
+        print(f"History: {self.writer.history_file}")
+
+    @staticmethod
+    def _empty_totals():
+        return {'total': 0, 'by_class': defaultdict(int), 'by_direction': defaultdict(int)}
+
+    # -- setup -------------------------------------------------------------
+
+    def start_capture(self):
+        self.grabber = FrameGrabber(self.video_source)
+        frame = None
+        deadline = time.time() + 10
+        while frame is None and time.time() < deadline:
+            frame = self.grabber.read()
+            if frame is None:
+                time.sleep(0.05)
+        if frame is None:
+            raise ValueError(f"No frames received from source: {self.video_source}")
+
+        height, width = frame.shape[:2]
+        self.frame_size = (width, height)
+        self._build_geometry(width, height)
+        self.calibration.build(width, height)
+        print(f"Capture ready at {width}x{height}")
+        return frame
+
+    def _build_geometry(self, width, height):
+        polygon = [to_pixels(point, width, height) for point in self.config['roi']['polygon']]
+        self.roi_polygon = np.array(polygon, dtype=np.int32)
+
+        self.roi_mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.fillPoly(self.roi_mask, [self.roi_polygon], 255)
+        self.roi_area = float(max(1, cv2.countNonZero(self.roi_mask)))
+
+        self.counting_lines = [CountingLine(line, width, height)
+                               for line in self.config['counting_lines']]
+        if not self.config['roi'].get('calibrated'):
+            print("Note: ROI not calibrated -- using the whole frame. Run calibrate.py for accuracy.")
+
+    # -- per-cycle work ----------------------------------------------------
+
+    def _in_roi(self, centroid):
+        return cv2.pointPolygonTest(self.roi_polygon, (float(centroid[0]), float(centroid[1])), False) >= 0
+
+    def _occupancy_fraction(self, tracks):
+        """Share of the road ROI covered by vehicles -- the density measure."""
+        if not tracks:
+            return 0.0
+        mask = np.zeros(self.roi_mask.shape, dtype=np.uint8)
+        for track in tracks:
+            x1, y1, x2, y2 = track.bbox
+            cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+        cv2.bitwise_and(mask, self.roi_mask, dst=mask)
+        return cv2.countNonZero(mask) / self.roi_area
+
+    def _register_crossings(self, tracks, now_iso):
+        for track in tracks:
+            previous = track.previous_centroid
+            if previous is None:
+                continue
+            for line in self.counting_lines:
+                if line.id in track.counted_lines:
+                    continue
+                direction = line.crossing_direction(previous, track.centroid)
+                if direction is None:
+                    continue
+                track.counted_lines.add(line.id)
+                crossing = {
+                    'camera_id': self.config['camera_id'],
+                    'crossed_at': now_iso,
+                    'track_id': track.id,
+                    'vehicle_class': track.class_name,
+                    'direction': direction,
+                    'line_id': line.id,
+                    'speed_kph': round(track.speed_kph, 1) if track.speed_kph is not None else None
+                }
+                self.pending_crossings.append(crossing)
+                self.window_crossings.append(crossing)
+                self._record_total(crossing)
+
+    def _record_total(self, crossing):
+        today = date.today()
+        if today != self.totals_date:
+            self.daily_totals = self._empty_totals()
+            self.totals_date = today
+        self.daily_totals['total'] += 1
+        self.daily_totals['by_class'][crossing['vehicle_class']] += 1
+        self.daily_totals['by_direction'][crossing['direction']] += 1
+
+    def _cpu_temperature(self):
+        path = '/sys/class/thermal/thermal_zone0/temp'
+        try:
+            with open(path, 'r', encoding='utf-8') as handle:
+                return round(int(handle.read().strip()) / 1000.0, 1)
+        except (OSError, ValueError):
+            return None
+
+    def _build_payload(self, tracks, now):
+        roi_tracks = [track for track in tracks if self._in_roi(track.centroid)]
+        vehicles_in_frame = len(roi_tracks)
+
+        occupancy = self._occupancy_fraction(roi_tracks)
+        smoothed = self.congestion.smooth(vehicles_in_frame, now)
+
+        speeds_kph = [t.speed_kph for t in roi_tracks if t.speed_kph is not None]
+        avg_speed_kph = sum(speeds_kph) / len(speeds_kph) if speeds_kph else None
+        speeds_pps = [t.speed_pps for t in roi_tracks if t.speed_pps]
+        avg_speed_pps = sum(speeds_pps) / len(speeds_pps) if speeds_pps else 0.0
+
+        score = self.congestion.score(occupancy, smoothed, avg_speed_kph)
+        level = self.congestion.level(score)
+
+        vehicle_types = defaultdict(int)
+        positions = []
+        width = self.frame_size[0]
+        for track in roi_tracks:
+            vehicle_types[track.class_name] += 1
+            positions.append(round(track.centroid[0] / width, 4))
+
+        window_directions = defaultdict(int)
+        for crossing in self.window_crossings:
+            window_directions[crossing['direction']] += 1
+        window_seconds = max(0.001, self.update_interval)
+
+        payload = {
+            # --- v2 fields ---
+            'schema': 2,
+            'camera_id': self.config['camera_id'],
+            'site_name': self.config['site_name'],
+            'timestamp': datetime.now().isoformat(timespec='seconds'),
+            'congestion_level': level,
+            'congestion_score': score,
+            'vehicles_in_frame': vehicles_in_frame,
+            'smoothed_vehicle_count': round(smoothed, 2),
+            'occupancy_pct': round(occupancy * 100, 1),
+            'avg_speed_kph': round(avg_speed_kph, 1) if avg_speed_kph is not None else None,
+            'speed_calibrated': self.calibration.enabled,
+            'flow': {
+                'window_seconds': round(window_seconds, 1),
+                'per_minute': round(len(self.window_crossings) * 60.0 / window_seconds, 1),
+                **{key: value for key, value in window_directions.items()}
+            },
+            'totals': {
+                'date': self.totals_date.isoformat(),
+                'today': self.daily_totals['total'],
+                'by_class': dict(self.daily_totals['by_class']),
+                'by_direction': dict(self.daily_totals['by_direction'])
+            },
+            'crossings': self.window_crossings[-20:],
+            'health': {
+                'fps': round(sum(self._fps_samples) / len(self._fps_samples), 1) if self._fps_samples else 0.0,
+                'backend': self.detector.backend,
+                'detect_every': self.detect_every,
+                'cpu_temp_c': self._cpu_temperature(),
+                'uptime_s': int(time.time() - self.started_at),
+                'roi_calibrated': bool(self.config['roi'].get('calibrated')),
+                'lines_calibrated': all(line.get('calibrated') for line in self.config['counting_lines'])
+            },
+
+            # --- v1 compatibility: keeps the existing dashboard working ---
+            'color': LEVEL_COLORS[level],
+            'label': level,
+            'vehicle_count': vehicles_in_frame,
+            'detections_count': vehicles_in_frame,
+            'source': 'traffic_vision_system',
+            'vehicle_types': dict(vehicle_types),
+            'positions': positions,
+            'avg_speed': round(avg_speed_kph, 1) if avg_speed_kph is not None else round(avg_speed_pps, 1)
         }
-        if snapshot_url:
-            data['snapshot_url'] = snapshot_url
 
-        # Add detailed vehicle information if detections are provided
-        if detections:
-            # Count vehicles by type
-            vehicle_types = defaultdict(int)
-            positions = []  # Store normalized center x positions (0.0 to 1.0)
-            speeds = []  # Store speeds in pixels per second
+        if positions:
+            payload['avg_position'] = round(sum(positions) / len(positions), 4)
 
-            for detection in detections:
-                x1, y1, x2, y2, confidence, class_id, track_id, speed = detection
+        return payload
 
-                # Get vehicle name
-                vehicle_name = self.class_to_name.get(class_id, f'class_{class_id}')
-                vehicle_types[vehicle_name] += 1
+    def _flush_history(self, now_monotonic, force=False):
+        """Aggregate the publish-cycle samples into one line per interval."""
+        if not self.history_bucket:
+            return
+        if not force and now_monotonic - self.last_history_flush < self.history_interval:
+            return
 
-                # Calculate center x position and normalize by frame width
-                center_x = (x1 + x2) / 2
-                normalized_x = center_x / frame_width if frame_width > 0 else 0.5
-                positions.append(normalized_x)
+        bucket = self.history_bucket
+        speeds = [entry['avg_speed_kph'] for entry in bucket if entry['avg_speed_kph'] is not None]
+        classes = defaultdict(int)
+        directions = defaultdict(int)
+        for entry in bucket:
+            for name, count in entry['vehicle_types'].items():
+                classes[name] += count
+            for name, count in entry['directions'].items():
+                directions[name] += count
 
-                # Collect speed data
-                speeds.append(speed)
+        record = {
+            'camera_id': self.config['camera_id'],
+            'timestamp': datetime.now().isoformat(timespec='seconds'),
+            'window_seconds': round(now_monotonic - self.last_history_flush, 1),
+            'samples': len(bucket),
+            'congestion_score': round(sum(e['score'] for e in bucket) / len(bucket), 1),
+            'congestion_level': self.congestion.level(int(round(sum(e['score'] for e in bucket) / len(bucket)))),
+            'peak_congestion_score': max(e['score'] for e in bucket),
+            'vehicles_in_frame_avg': round(sum(e['vehicles'] for e in bucket) / len(bucket), 2),
+            'vehicles_in_frame_peak': max(e['vehicles'] for e in bucket),
+            'occupancy_pct': round(sum(e['occupancy'] for e in bucket) / len(bucket), 1),
+            'avg_speed_kph': round(sum(speeds) / len(speeds), 1) if speeds else None,
+            'speed_calibrated': self.calibration.enabled,
+            'crossings': sum(e['crossings'] for e in bucket),
+            'vehicle_types': dict(classes),
+            'by_direction': dict(directions)
+        }
+        self.writer.append_history(record)
+        self.history_bucket = []
+        self.last_history_flush = now_monotonic
 
-            # Add to data
-            data['vehicle_types'] = dict(vehicle_types)
-            if positions:
-                data['positions'] = positions
-                data['avg_position'] = sum(positions) / len(positions)
-                data['position_std'] = (sum((p - data['avg_position']) ** 2 for p in positions) / len(positions)) ** 0.5 if len(positions) > 1 else 0.0
+        self.hour_bucket.append(record)
+        self._flush_hourly()
 
-            # Add speed statistics
-            if speeds:
-                data['avg_speed'] = sum(speeds) / len(speeds)
-                data['speed_std'] = (sum((s - data['avg_speed']) ** 2 for s in speeds) / len(speeds)) ** 0.5 if len(speeds) > 1 else 0.0
-                data['max_speed'] = max(speeds)
-                data['min_speed'] = min(speeds)
+    def _flush_hourly(self, force=False):
+        """Roll the collected minute records up into one record per hour."""
+        if not self.hour_bucket:
+            return
+        hour_now = datetime.now().replace(minute=0, second=0, microsecond=0)
+        if not force and hour_now <= self.current_hour:
+            return
 
-        try:
-            self._atomic_write_json(self.output_file, data)
-            # Also write to history file
-            self.write_to_history(data)
-        except Exception as e:
-            print(f"Error writing to {self.output_file}: {e}")
+        self.writer.append_hourly(aggregate_minute_records(
+            self.hour_bucket, self.config['camera_id'], self.current_hour, self.congestion
+        ))
+        self.hour_bucket = []
+        self.current_hour = hour_now
 
-    def write_to_history(self, data):
-        """
-        Append data to history file, keeping only the last `history_limit` entries.
-        """
-        try:
-            # Read existing history
-            if os.path.exists(self.history_file):
-                with open(self.history_file, 'r') as f:
-                    history = json.load(f)
-            else:
-                history = []
+    # -- snapshots ---------------------------------------------------------
 
-            # Append new data
-            history.append(data)
-
-            # Trim to last `history_limit` entries
-            if len(history) > self.history_limit:
-                history = history[-self.history_limit:]
-
-            # Write back atomically
-            self._atomic_write_json(self.history_file, history)
-        except Exception as e:
-            print(f"Error writing to history file {self.history_file}: {e}")
-
-    def save_evidence_snapshot(self, frame, detections, level_key):
-        """Save one compressed annotated image for a sustained HEAVY incident."""
+    def save_evidence_snapshot(self, frame, tracks, level, score):
         os.makedirs(WEB_SNAPSHOT_DIR, exist_ok=True)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"heavy_{timestamp}.jpg"
+        filename = f"heavy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         path = os.path.join(WEB_SNAPSHOT_DIR, filename)
-        annotated_frame = self.draw_detections(frame, detections, level_key)
-        height, width = annotated_frame.shape[:2]
+
+        annotated = self.draw_overlay(frame, tracks, level, score)
+        height, width = annotated.shape[:2]
         if width > 960:
-            scale = 960 / width
-            annotated_frame = cv2.resize(annotated_frame, (960, int(height * scale)))
-        if not cv2.imwrite(path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75]):
+            annotated = cv2.resize(annotated, (960, int(height * 960 / width)))
+        if not cv2.imwrite(path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 75]):
             raise IOError(f"Unable to save snapshot: {path}")
 
-        snapshots = sorted(
+        existing = sorted(
             (item for item in os.scandir(WEB_SNAPSHOT_DIR) if item.is_file() and item.name.endswith('.jpg')),
             key=lambda item: item.stat().st_mtime
         )
-        for old_snapshot in snapshots[:-self.max_snapshots]:
-            os.remove(old_snapshot.path)
+        for stale in existing[:-self.max_snapshots]:
+            os.remove(stale.path)
         return f"{SNAPSHOT_URL_PREFIX}/{filename}"
 
-    def draw_detections(self, frame, detections, level_key=None):
-        """
-        Draw bounding boxes and labels on frame for visualization.
+    # -- display -----------------------------------------------------------
 
-        Args:
-            frame: Input frame
-            detections: List of detections to draw
+    def draw_overlay(self, frame, tracks, level, score):
+        annotated = frame.copy()
+        colors = {'car': (0, 220, 0), 'motorcycle': (255, 170, 0),
+                  'bus': (0, 170, 255), 'truck': (255, 0, 170)}
 
-        Returns:
-            Frame with detections drawn
-        """
-        annotated_frame = frame.copy()
+        cv2.polylines(annotated, [self.roi_polygon], True, (200, 200, 200), 1)
+        for line in self.counting_lines:
+            cv2.line(annotated,
+                     (int(line.start[0]), int(line.start[1])),
+                     (int(line.end[0]), int(line.end[1])), (0, 255, 255), 2)
 
-        # Calculate congestion level based on detections
-        vehicle_count = len(detections)
+        for track in tracks:
+            x1, y1, x2, y2 = track.bbox
+            color = colors.get(track.class_name, (200, 200, 200))
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            if track.speed_kph is not None:
+                speed_text = f" {track.speed_kph:.0f}km/h"
+            elif track.speed_pps:
+                speed_text = f" {track.speed_pps:.0f}px/s"
+            else:
+                speed_text = ""
+            cv2.putText(annotated, f"{track.class_name}#{track.id}{speed_text}",
+                        (x1, max(12, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
-        if level_key is None:
-            level_key, _, _ = self.calculate_congestion_level(detections)
+        overlay = annotated.copy()
+        cv2.rectangle(overlay, (5, 5), (295, 112), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, annotated, 0.4, 0, annotated)
+        cv2.rectangle(annotated, (5, 5), (295, 112), (255, 255, 255), 1)
 
-        level_info = self.congestion_levels[level_key]
+        fps = sum(self._fps_samples) / len(self._fps_samples) if self._fps_samples else 0.0
+        lines = [
+            f"{level}  score {score}",
+            f"In frame: {len(tracks)}   Today: {self.daily_totals['total']}",
+            f"FPS {fps:.1f}  {self.detector.backend}"
+        ]
+        for index, text in enumerate(lines):
+            cv2.putText(annotated, text, (14, 32 + index * 26),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6 if index == 0 else 0.5,
+                        (255, 255, 255), 2 if index == 0 else 1)
+        return annotated
 
-        # Count vehicles by type for display
-        vehicle_type_counts = defaultdict(int)
-        positions = []  # For average position calculation
-        speeds = []  # For average speed calculation
-
-        for detection in detections:
-            x1, y1, x2, y2, confidence, class_id, track_id, speed = detection
-            vehicle_name = self.class_to_name.get(class_id, f'class_{class_id}')
-            vehicle_type_counts[vehicle_name] += 1
-
-            # Calculate center x position for average
-            center_x = (x1 + x2) / 2
-            # Assuming frame width of 640 for normalization (can be made configurable)
-            normalized_x = center_x / 640.0
-            positions.append(normalized_x)
-
-            # Collect speed data
-            speeds.append(speed)
-
-        # Format breakdown string
-        breakdown_parts = []
-        for vtype in ['car', 'motorcycle', 'bus', 'truck']:  # Order for consistent display
-            if vtype in vehicle_type_counts:
-                breakdown_parts.append(f"{vtype}:{vehicle_type_counts[vtype]}")
-        breakdown_str = " | ".join(breakdown_parts)
-
-        # Calculate average position and speed
-        avg_pos = sum(positions) / len(positions) if positions else 0.5
-        avg_speed = sum(speeds) / len(speeds) if speeds else 0.0
-
-        for detection in detections:
-            x1, y1, x2, y2, confidence, class_id, track_id, speed = detection
-
-            # Color based on class (simple mapping)
-            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (0, 255, 255)]
-            color = colors[class_id % len(colors)]
-
-            # Draw bounding box
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
-
-            # Draw label with vehicle type, ID, and confidence
-            vehicle_name = self.class_to_name.get(class_id, f'class_{class_id}')
-            label = f"{vehicle_name}#{track_id}:{confidence:.2f}"
-            cv2.putText(annotated_frame, label, (x1, y1-10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-        # Add container box in upper left for counting level (REQUESTED FEATURE)
-        # Draw semi-transparent background box
-        overlay = annotated_frame.copy()
-        cv2.rectangle(overlay, (5, 5), (250, 90), (0, 0, 0), -1)  # Black background
-        cv2.addWeighted(overlay, 0.6, annotated_frame, 0.4, 0, annotated_frame)  # Apply transparency
-
-        # Add border to the container box
-        cv2.rectangle(annotated_frame, (5, 5), (250, 90), (255, 255, 255), 2)  # White border
-
-        # Format and display counting level information in the container
-        # Main counting level
-        count_text = f"TRAFFIC LEVEL: {level_key}"
-        cv2.putText(annotated_frame, count_text, (15, 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        # Vehicle count
-        vehicle_text = f"VEHICLES: {vehicle_count}"
-        cv2.putText(annotated_frame, vehicle_text, (15, 55),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-        # Optional: Additional info below
-        info_text = f"Avg Pos: {avg_pos:.2f}"
-        cv2.putText(annotated_frame, info_text, (15, 75),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
-        return annotated_frame
+    # -- main loop ---------------------------------------------------------
 
     def run(self, display_output=True):
-        """
-        Main processing loop.
-
-        Args:
-            display_output: Whether to display the video with detections
-        """
-        if not self.cap:
+        if not self.grabber:
             self.start_capture()
 
-        print("Starting traffic vision processing... Press 'q' to quit")
-
-        last_congestion_level = None
-        last_write_time = 0.0
-        heavy_publish_streak = 0
+        print("Processing... press 'q' in the video window to quit (Ctrl+C when headless)")
+        last_publish = 0.0
+        detections = []
+        tracks = []
+        level, score = 'LIGHT', 0
 
         try:
             while True:
-                ret, frame = self.cap.read()
-                if not ret:
-                    print("End of video stream or cannot read frame")
-                    break
+                frame = self.grabber.read()
+                if frame is None:
+                    if self.grabber.finished:
+                        print("End of video stream")
+                        break
+                    time.sleep(0.005)
+                    continue
 
+                now = time.time()
+                if self._last_frame_time:
+                    delta = now - self._last_frame_time
+                    if delta > 0:
+                        self._fps_samples.append(1.0 / delta)
+                self._last_frame_time = now
                 self.frame_count += 1
 
-                # Detect vehicles
-                detections = self.detect_vehicles(frame)
+                # Detection is the expensive step; tracking between detections
+                # is nearly free and keeps IDs alive on a slow Pi.
+                if self.frame_count % self.detect_every == 0:
+                    detections = self.detector.detect(frame)
+                    tracks = self.tracker.update(detections, now)
+                    self._register_crossings(tracks, datetime.now().isoformat(timespec='seconds'))
 
-                # Calculate congestion level
-                level_key, level_info, vehicle_count = self.calculate_congestion_level(detections)
+                now_monotonic = time.monotonic()
+                if now_monotonic - last_publish >= self.update_interval:
+                    payload = self._build_payload(tracks, now)
+                    level, score = payload['congestion_level'], payload['congestion_score']
 
-                # Publish a fresh payload at a predictable cadence. This keeps map
-                # markers current even while the congestion color stays unchanged.
-                now = time.monotonic()
-                if level_key != last_congestion_level or now - last_write_time >= self.update_interval:
-                    heavy_publish_streak = heavy_publish_streak + 1 if level_key == 'HEAVY' else 0
-                    snapshot_url = None
-                    if heavy_publish_streak >= 3 and now - self.last_snapshot_time >= self.snapshot_cooldown_seconds:
-                        snapshot_url = self.save_evidence_snapshot(frame, detections, level_key)
-                        self.last_snapshot_time = now
-                        print(f"Evidence snapshot saved: {snapshot_url}")
-                    self.write_congestion_data(level_key, level_info, vehicle_count, detections, snapshot_url=snapshot_url)
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Congestion: {level_key} ({vehicle_count} vehicles)")
-                    last_congestion_level = level_key
-                    last_write_time = now
+                    if level in ('HEAVY', 'CRITICAL'):
+                        self.heavy_streak += 1
+                    else:
+                        self.heavy_streak = 0
 
-                # Display output if requested
+                    if (self.heavy_streak >= self.snapshot_streak_target
+                            and now_monotonic - self.last_snapshot_time >= self.snapshot_cooldown):
+                        payload['snapshot_url'] = self.save_evidence_snapshot(frame, tracks, level, score)
+                        self.last_snapshot_time = now_monotonic
+                        print(f"Evidence snapshot saved: {payload['snapshot_url']}")
+
+                    self.writer.write_current(payload)
+                    self.writer.append_crossings(self.pending_crossings)
+                    self.history_bucket.append({
+                        'score': score,
+                        'vehicles': payload['vehicles_in_frame'],
+                        'occupancy': payload['occupancy_pct'],
+                        'avg_speed_kph': payload['avg_speed_kph'],
+                        'crossings': len(self.window_crossings),
+                        'vehicle_types': payload['vehicle_types'],
+                        'directions': {k: v for k, v in payload['flow'].items()
+                                       if k not in ('window_seconds', 'per_minute')}
+                    })
+                    self._flush_history(now_monotonic)
+
+                    speed_text = (f"{payload['avg_speed_kph']} km/h"
+                                  if payload['avg_speed_kph'] is not None else "speed n/a")
+                    print(f"[{datetime.now():%H:%M:%S}] {level} {score}% | "
+                          f"{payload['vehicles_in_frame']} in frame | "
+                          f"{self.daily_totals['total']} today | {speed_text}")
+
+                    self.pending_crossings = []
+                    self.window_crossings = []
+                    last_publish = now_monotonic
+
                 if display_output:
-                    annotated_frame = self.draw_detections(frame, detections, level_key)
-
-                    cv2.imshow('Traffic Vision', annotated_frame)
-
-                    # Break on 'q' key press
+                    cv2.imshow('BITCAS Traffic Vision', self.draw_overlay(frame, tracks, level, score))
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
-
-                # Small delay to prevent excessive CPU usage
-                time.sleep(0.01)
 
         except KeyboardInterrupt:
             print("\nInterrupted by user")
         finally:
+            self._final_flush()
             self.cleanup()
 
+    def _final_flush(self):
+        """Persist anything buffered so a Ctrl+C never drops counted vehicles."""
+        self.writer.append_crossings(self.pending_crossings)
+        self.pending_crossings = []
+        self._flush_history(time.monotonic(), force=True)
+        self._flush_hourly(force=True)
+
     def cleanup(self):
-        """Release resources."""
-        if self.cap:
-            self.cap.release()
+        if self.grabber:
+            self.grabber.release()
         cv2.destroyAllWindows()
-        print("Resources cleaned up")
+        print("Resources released")
 
 
 def main():
-    """Main function to run the traffic vision system."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description='Traffic Vision System for Vehicle Detection')
-    parser.add_argument('--source', type=str, default='0',
-                       help='Video source: camera index (0,1,...) or path to video file')
-    parser.add_argument('--output', type=str, default=DEFAULT_CONGESTION_FILE,
-                       help='Output JSON file for congestion data')
-    parser.add_argument('--no-display', action='store_true',
-                       help='Do not display video output (headless mode)')
-    parser.add_argument('--light-threshold', type=int, default=5,
-                       help='Vehicle count threshold for LIGHT congestion')
-    parser.add_argument('--moderate-threshold', type=int, default=15,
-                       help='Vehicle count threshold for MODERATE congestion')
-    parser.add_argument('--update-interval', type=float, default=3,
-                       help='Seconds between JSON updates for the dashboard')
+    parser = argparse.ArgumentParser(description='BITCAS Traffic Vision System')
+    parser.add_argument('--source', default='0', help='Camera index (0, 1, ...) or path to a video file')
+    parser.add_argument('--config', default=DEFAULT_CONFIG_FILE, help='Path to site_config.json')
+    parser.add_argument('--output', default=DEFAULT_CONGESTION_FILE, help='Live payload JSON path')
+    parser.add_argument('--backend', default='auto', choices=['auto', 'ncnn', 'pytorch', 'haar'],
+                        help='Detector backend. ncnn is 2-3x faster on a Raspberry Pi 5')
     parser.add_argument('--inference-size', type=int, default=416,
-                       help='YOLO input size; 416 is a Pi-friendly default')
-    parser.add_argument('--confidence', type=float, default=0.5,
-                       help='Minimum YOLO confidence for a vehicle detection')
-
+                        help='YOLO input size. Use 320 on a Pi if FPS is low')
+    parser.add_argument('--confidence', type=float, default=0.5, help='Minimum detection confidence')
+    parser.add_argument('--detect-every', type=int, default=1,
+                        help='Run detection every Nth frame; track in between (use 2-3 on a Pi)')
+    parser.add_argument('--update-interval', type=float, default=None,
+                        help='Seconds between dashboard payloads (overrides site_config.json)')
+    parser.add_argument('--threads', type=int, default=0,
+                        help='OpenCV thread cap. Set to 3 on a Pi so the video stream keeps a core')
+    parser.add_argument('--no-display', action='store_true', help='Headless mode')
+    parser.add_argument('--pi', action='store_true',
+                        help='Raspberry Pi 5 4GB preset: NCNN, 320px, detect every 2nd frame, 3 OpenCV threads, headless')
     args = parser.parse_args()
 
-    # Convert source to int if it's a number, otherwise treat as file path
+    if args.pi:
+        if args.backend == 'auto':
+            args.backend = 'ncnn'
+        if args.inference_size == 416:
+            args.inference_size = 320
+        if args.detect_every == 1:
+            args.detect_every = 2
+        if args.threads == 0:
+            args.threads = 3
+        args.no_display = True
+        print('Pi 5 preset: backend=%s inference=%s detect-every=%s threads=%s headless' % (
+            args.backend, args.inference_size, args.detect_every, args.threads))
+
+    if args.threads > 0:
+        cv2.setNumThreads(args.threads)
+
     try:
         video_source = int(args.source)
     except ValueError:
-        video_source = args.source  # Treat as file path
+        video_source = args.source
 
-    # Create and run the vision system
-    vision_system = TrafficVisionSystem(
+    system = TrafficVisionSystem(
         video_source=video_source,
+        config_file=args.config,
         output_file=args.output,
-        update_interval=args.update_interval,
+        backend=args.backend,
         inference_size=args.inference_size,
-        confidence_threshold=args.confidence
+        confidence_threshold=args.confidence,
+        detect_every=args.detect_every,
+        update_interval=args.update_interval
     )
-
-    # Set custom thresholds if provided
-    vision_system.LIGHT_THRESHOLD = args.light_threshold
-    vision_system.MODERATE_THRESHOLD = args.moderate_threshold
-
-    # Run the system
-    vision_system.run(display_output=not args.no_display)
+    system.run(display_output=not args.no_display)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-

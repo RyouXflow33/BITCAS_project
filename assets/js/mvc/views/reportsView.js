@@ -39,6 +39,7 @@ function renderReportsPage() {
             <div class="report-card-badges">
                 <span class="tag ${severityTagClass(report.severity)}">${report.severity}</span>
                 <span class="tag ${statusTagClass(report.status)}">${report.status}</span>
+                ${report.falsePositive ? '<span class="tag status-open">Not congestion</span>' : ''}
             </div>
         </button>
     `).join('');
@@ -66,6 +67,8 @@ function fillReportEditor(reportId) {
     setText('metaOfficer', getAssignedOfficer(report.id));
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = report.status === 'Resolved';
+    const falsePositiveBtn = document.getElementById('markFalsePositiveBtn');
+    if (falsePositiveBtn) falsePositiveBtn.disabled = Boolean(report.falsePositive) || report.status === 'Resolved';
     renderReportEvidence(report);
 }
 
@@ -91,6 +94,8 @@ function resetEditor() {
     setText('metaOfficer', '--');
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = true;
+    const falsePositiveBtn = document.getElementById('markFalsePositiveBtn');
+    if (falsePositiveBtn) falsePositiveBtn.disabled = true;
     renderReportEvidence({});
 }
 

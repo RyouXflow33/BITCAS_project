@@ -70,6 +70,7 @@
             <div class="editor-actions">
                 <button type="submit" class="btn primary">Save report</button>
                 <button type="button" class="btn ghost" id="markResolvedBtn">Mark resolved</button>
+                <button type="button" class="btn ghost" id="markFalsePositiveBtn">Not congestion</button>
             </div>
         </form>
     </section>

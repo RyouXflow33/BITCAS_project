@@ -100,6 +100,18 @@ function bindReportActions() {
             renderGlobalCounters();
         });
     }
+
+    const falsePositiveBtn = document.getElementById('markFalsePositiveBtn');
+    if (falsePositiveBtn) {
+        falsePositiveBtn.addEventListener('click', () => {
+            if (!selectedReportId) return;
+            const report = findReport(selectedReportId);
+            if (!report || report.falsePositive || report.status === 'Resolved') return;
+            if (!markReportFalsePositive(selectedReportId)) return;
+            renderReportsPage();
+            renderGlobalCounters();
+        });
+    }
 }
 
 function getFilteredReports() {

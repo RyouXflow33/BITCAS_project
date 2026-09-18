@@ -7,7 +7,7 @@ $titleMap = [
     'command' => 'Traffic Map',
     'analytics' => 'Traffic Analytics',
     'incidents' => 'Congested Reports',
-    'dispatch' => 'Assign Officer'
+    'dispatch' => 'Dispatch'
 ];
 $pageTitle = $titleMap[$page];
 

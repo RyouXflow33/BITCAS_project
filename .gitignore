@@ -11,3 +11,12 @@ vision/video_err.txt
 # Local media / generated snapshots
 vision/*.mp4
 assets/snapshots/
+
+# Runtime telemetry written by the vision node (append-only, grows on disk).
+# congestion.json stays tracked because it doubles as a dashboard fixture.
+assets/data/traffic_history.jsonl
+assets/data/traffic_hourly.jsonl
+assets/data/crossings.jsonl
+
+# Exported NCNN model (regenerate with: yolo export model=yolov8n.pt format=ncnn)
+vision/yolov8n_ncnn_model/

@@ -10,7 +10,7 @@
     <nav class="nav">
         <a class="<?= navClass($page,'command') ?>" href="?page=command"><span>⌘</span> Traffic Map</a>
         <a class="<?= navClass($page,'incidents') ?>" href="?page=incidents"><span>!</span> Congested Reports <b class="nav-badge" id="reportNavCount">0</b></a>
-        <a class="<?= navClass($page,'dispatch') ?>" href="?page=dispatch"><span>⇄</span> Assign Officer</a>
+        <a class="<?= navClass($page,'dispatch') ?>" href="?page=dispatch"><span>⇄</span> Dispatch</a>
         <a class="<?= navClass($page,'analytics') ?>" href="?page=analytics"><span>⌁</span> Analytics</a>
     </nav>
 
