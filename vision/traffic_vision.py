@@ -216,11 +216,12 @@ class Calibration:
 
 class FrameGrabber:
     """
-    Reads frames on a background thread and keeps only the newest one.
+    Live camera: background thread, keep only the newest frame so the overlay
+    never lags behind the buffer.
 
-    Without this the main loop falls behind the camera's buffer: each read()
-    returns an older frame than the last, so on a Pi the overlay drifts seconds
-    behind reality. Dropping stale frames keeps the analysis live.
+    Video file: read every frame in order and let the main loop pace to the
+    file's FPS. Drop-newest on a file looks like fast-forward because the
+    decoder outruns YOLO and discarded frames never get shown.
     """
 
     def __init__(self, source, width=640, height=480):
@@ -228,20 +229,27 @@ class FrameGrabber:
         if not self.capture.isOpened():
             raise ValueError(f"Cannot open video source: {source}")
 
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        try:
-            self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except cv2.error:
-            pass
+        self.is_file = isinstance(source, str) and os.path.isfile(source)
+        fps = float(self.capture.get(cv2.CAP_PROP_FPS) or 0)
+        self.fps = fps if fps > 1 else 25.0
+        self.frame_interval = 1.0 / self.fps
 
-        self.is_file = isinstance(source, str) and os.path.exists(source)
+        if not self.is_file:
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            try:
+                self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except cv2.error:
+                pass
+
         self._lock = threading.Lock()
         self._frame = None
         self._stopped = False
         self._finished = False
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        self._thread = None
+        if not self.is_file:
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
 
     def _run(self):
         while not self._stopped:
@@ -251,12 +259,14 @@ class FrameGrabber:
                 break
             with self._lock:
                 self._frame = frame
-            if self.is_file:
-                # Video files have no natural pacing; without this the whole
-                # file races through in seconds.
-                time.sleep(0.02)
 
     def read(self):
+        if self.is_file:
+            ok, frame = self.capture.read()
+            if not ok:
+                self._finished = True
+                return None
+            return frame
         with self._lock:
             frame = self._frame
             self._frame = None
@@ -268,7 +278,8 @@ class FrameGrabber:
 
     def release(self):
         self._stopped = True
-        self._thread.join(timeout=1.0)
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
         self.capture.release()
 
 
@@ -732,7 +743,10 @@ class TrafficVisionSystem:
         self.frame_size = (width, height)
         self._build_geometry(width, height)
         self.calibration.build(width, height)
-        print(f"Capture ready at {width}x{height}")
+        if self.grabber.is_file:
+            print(f"Capture ready at {width}x{height} | video file {self.grabber.fps:.1f} FPS (realtime playback)")
+        else:
+            print(f"Capture ready at {width}x{height} | live camera (drop stale frames)")
         return frame
 
     def _build_geometry(self, width, height):
@@ -1026,6 +1040,7 @@ class TrafficVisionSystem:
                     time.sleep(0.005)
                     continue
 
+                frame_started = time.monotonic()
                 now = time.time()
                 if self._last_frame_time:
                     delta = now - self._last_frame_time
@@ -1081,10 +1096,18 @@ class TrafficVisionSystem:
                     self.window_crossings = []
                     last_publish = now_monotonic
 
+                wait_ms = 1
+                if self.grabber.is_file:
+                    leftover = self.grabber.frame_interval - (time.monotonic() - frame_started)
+                    if leftover > 0:
+                        wait_ms = max(1, int(leftover * 1000))
+
                 if display_output:
                     cv2.imshow('BITCAS Traffic Vision', self.draw_overlay(frame, tracks, level, score))
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                    if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
                         break
+                elif wait_ms > 1:
+                    time.sleep(wait_ms / 1000.0)
 
         except KeyboardInterrupt:
             print("\nInterrupted by user")
