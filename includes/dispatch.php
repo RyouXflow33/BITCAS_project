@@ -1,13 +1,13 @@
 <section class="page-head">
     <div>
-        <span class="section-kicker">Assign a unit to a camera report</span>
+        <span class="section-kicker"><?= icon('dispatch') ?> Assign a unit to a camera report</span>
     </div>
     <div class="head-actions">
         <div class="segmented" id="dispatchTabs">
-            <button type="button" class="active" data-dispatch-tab="board">Board</button>
-            <button type="button" data-dispatch-tab="roster">Officer roster</button>
+            <button type="button" class="active" data-dispatch-tab="board"><?= icon('kanban') ?> Board</button>
+            <button type="button" data-dispatch-tab="roster"><?= icon('users') ?> Officer roster</button>
         </div>
-        <div class="dispatch-clock"><span>LGU SHIFT</span><strong id="clock">00:00:00</strong></div>
+        <div class="dispatch-clock"><?= icon('clock') ?><span>LGU SHIFT</span><strong id="clock">00:00:00</strong></div>
     </div>
 </section>
 
@@ -16,13 +16,13 @@
 
     <div class="dispatch-grid assign-grid dispatch-board-grid">
         <section class="panel">
-            <div class="panel-head"><div><h2>Unassigned / open</h2><span id="dispatchOpenCount">0 open</span></div></div>
+            <div class="panel-head"><div><h2><?= icon('inbox') ?> Unassigned / open</h2><span id="dispatchOpenCount">0 open</span></div></div>
             <div id="dispatchQueue"></div>
         </section>
 
         <section class="panel">
             <div class="panel-head">
-                <div><h2>Assign officer</h2><span>Ranked for this location — you confirm</span></div>
+                <div><h2><?= icon('user-check') ?> Assign officer</h2><span>Ranked for this location — you confirm</span></div>
                 <span class="tag info" id="dispatchSelection">No report selected</span>
             </div>
             <div class="dispatch-selected" id="dispatchSelectedReport"></div>
@@ -31,7 +31,7 @@
     </div>
 
     <div class="panel">
-        <div class="panel-head"><div><h2>Field status</h2><span>Assigned → En route → On scene → Resolved</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('kanban') ?> Field status</h2><span>Assigned → En route → On scene → Resolved</span></div></div>
         <div class="kanban" id="assignmentBoard"></div>
     </div>
 </div>
@@ -40,7 +40,7 @@
     <div class="roster-layout">
         <div class="roster-left">
             <section class="panel">
-                <div class="panel-head"><div><h2>Create officer profile</h2><span>Saved in this browser</span></div></div>
+                <div class="panel-head"><div><h2><?= icon('user-plus') ?> Create officer profile</h2><span>Saved in this browser</span></div></div>
                 <form class="form-grid officer-create-form" id="officerCreateForm">
                     <div>
                         <label for="officerBadge">Badge ID</label>
@@ -96,17 +96,17 @@
                     </div>
                     <p class="form-error" id="officerCreateError" hidden></p>
                     <div class="full-width">
-                        <button class="btn primary" type="submit">Create officer</button>
+                        <button class="btn primary" type="submit"><?= icon('user-plus') ?> Create officer</button>
                     </div>
                 </form>
             </section>
             <section class="panel">
-                <div class="panel-head"><div><h2>Officer roster</h2><span id="rosterMeta">0 officers</span></div></div>
+                <div class="panel-head"><div><h2><?= icon('users') ?> Officer roster</h2><span id="rosterMeta">0 officers</span></div></div>
                 <div class="roster-grid" id="officerRoster"></div>
             </section>
         </div>
         <section class="panel detail-panel">
-            <div class="panel-head"><div><h2>Officer profile</h2><span>Shift, contact, performance</span></div><span class="tag info" id="rosterOfficerId">No selection</span></div>
+            <div class="panel-head"><div><h2><?= icon('badge') ?> Officer profile</h2><span>Shift, contact, performance</span></div><span class="tag info" id="rosterOfficerId">No selection</span></div>
             <div id="officerProfile"></div>
         </section>
     </div>

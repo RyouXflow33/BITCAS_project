@@ -24,10 +24,10 @@ function renderDispatchKpis() {
     const cameraOpen = getOpenCameraReports().length;
 
     target.innerHTML = `
-        <div class="stat-card"><div class="stat-icon yellow">!</div><div><span>Unassigned</span><strong>${unassigned}</strong><em>${cameraOpen} from camera</em></div></div>
-        <div class="stat-card"><div class="stat-icon violet">⇄</div><div><span>Active assignments</span><strong>${active.length}</strong><em>In the field</em></div></div>
-        <div class="stat-card"><div class="stat-icon green">OK</div><div><span>Officers available</span><strong>${available}</strong><em>of ${state.officers.length} on roster</em></div></div>
-        <div class="stat-card"><div class="stat-icon ${breaches ? 'red' : 'blue'}">SLA</div><div><span>SLA breaches</span><strong>${breaches}</strong><em>${breaches ? 'Over target response time' : 'All within target'}</em></div></div>
+        <div class="stat-card"><div class="stat-icon yellow">${icon('alert')}</div><div><span>Unassigned</span><strong>${unassigned}</strong><em>${cameraOpen} from camera</em></div></div>
+        <div class="stat-card"><div class="stat-icon violet">${icon('send')}</div><div><span>Active assignments</span><strong>${active.length}</strong><em>In the field</em></div></div>
+        <div class="stat-card"><div class="stat-icon green">${icon('users')}</div><div><span>Officers available</span><strong>${available}</strong><em>of ${state.officers.length} on roster</em></div></div>
+        <div class="stat-card"><div class="stat-icon ${breaches ? 'red' : 'blue'}">${icon('timer')}</div><div><span>SLA breaches</span><strong>${breaches}</strong><em>${breaches ? 'Over target response time' : 'All within target'}</em></div></div>
     `;
 }
 
@@ -48,7 +48,7 @@ function renderDispatchQueue() {
     count.textContent = `${openReports.length} open`;
 
     if (!openReports.length) {
-        target.innerHTML = '<div class="dispatch-card">No camera reports yet. Run traffic_vision.py — a report appears after HEAVY or CRITICAL holds for 3 intervals.</div>';
+        target.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py — a report appears after HEAVY or CRITICAL holds for 3 intervals.');
         return;
     }
 
@@ -83,7 +83,7 @@ function renderSelectedDispatchReport() {
     const report = selectedDispatchReportId ? findReport(selectedDispatchReportId) : null;
     if (!report) {
         selection.textContent = 'No report selected';
-        target.innerHTML = '<p class="panel-note">Camera reports land here after you run traffic_vision.py. Create officers on the roster, then assign a unit.</p>';
+        target.innerHTML = emptyState('inbox', 'Select a camera report', 'Cases land here after you run traffic_vision.py. Create officers on the roster, then assign a unit.');
         return;
     }
 
@@ -124,7 +124,7 @@ function renderOfficerPool() {
     }
 
     if (!state.officers.length) {
-        target.innerHTML = '<p class="panel-note">No officers yet. Open Officer roster, create a profile, then assign from this board.</p>';
+        target.innerHTML = emptyState('users', 'No officers yet', 'Open Officer roster, create a profile, then assign from this board.');
         return;
     }
 
@@ -139,7 +139,7 @@ function renderOfficerPool() {
                     <p>${officer.rank} · ${officer.zone}${recommend ? ' · Recommended' : ''}</p>
                     <small>${reasons.join(' · ')}</small>
                 </div>
-                <button class="btn ${canAssign && !alreadyAssigned ? 'primary' : 'ghost'} tiny" data-assign-officer="${officer.id}" ${canAssign && !alreadyAssigned ? '' : 'disabled'}>${alreadyAssigned ? 'Assigned' : 'Assign'}</button>
+                <button class="btn ${canAssign && !alreadyAssigned ? 'primary' : 'ghost'} tiny" data-assign-officer="${officer.id}" ${canAssign && !alreadyAssigned ? '' : 'disabled'}>${icon(alreadyAssigned ? 'check' : 'user-check')} ${alreadyAssigned ? 'Assigned' : 'Assign'}</button>
             </div>
         `;
     }).join('');
@@ -198,7 +198,7 @@ function renderOfficerRoster() {
 
     meta.textContent = `${state.officers.length} officers`;
     if (!state.officers.length) {
-        target.innerHTML = '<div class="dispatch-card">No officers yet. Create a profile above.</div>';
+        target.innerHTML = emptyState('users', 'No officers yet', 'Create a profile above to start the roster.');
         return;
     }
 
@@ -231,7 +231,7 @@ function renderOfficerProfile() {
     const officer = state.officers.find((item) => item.id === selectedOfficerId);
     if (!officer) {
         label.textContent = 'No selection';
-        target.innerHTML = '<p class="panel-note">Create an officer on the left, then select them to see shift, contact, and clearance times.</p>';
+        target.innerHTML = emptyState('badge', 'No officer selected', 'Create an officer on the left, then select them to see shift, contact, and clearance times.');
         return;
     }
 
@@ -279,11 +279,23 @@ function renderOfficerProfile() {
     `;
 }
 
+function replayPane(pane) {
+    pane.classList.remove('pane-in');
+    void pane.offsetWidth;
+    pane.classList.add('pane-in');
+}
+
 function setDispatchTab(tab) {
     const board = document.getElementById('dispatchBoard');
     const roster = document.getElementById('dispatchRoster');
-    if (board) board.hidden = tab !== 'board';
-    if (roster) roster.hidden = tab !== 'roster';
+    if (board) {
+        board.hidden = tab !== 'board';
+        if (tab === 'board') replayPane(board);
+    }
+    if (roster) {
+        roster.hidden = tab !== 'roster';
+        if (tab === 'roster') replayPane(roster);
+    }
     document.querySelectorAll('#dispatchTabs [data-dispatch-tab]').forEach((button) => {
         button.classList.toggle('active', button.dataset.dispatchTab === tab);
     });

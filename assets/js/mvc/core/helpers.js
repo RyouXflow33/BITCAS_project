@@ -245,3 +245,15 @@ function setValue(id, value) {
     const el = document.getElementById(id);
     if (el) el.value = value;
 }
+
+function icon(name, className = 'ico') {
+    return `<svg class="${className}" aria-hidden="true" focusable="false"><use href="#i-${name}"></use></svg>`;
+}
+
+function emptyState(iconName, title, hint) {
+    return `<div class="empty-state">
+        <div class="empty-state-icon">${icon(iconName)}</div>
+        <strong>${title}</strong>
+        <span>${hint}</span>
+    </div>`;
+}

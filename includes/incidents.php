@@ -1,9 +1,9 @@
 <section class="page-head">
     <div>
-        <span class="section-kicker">Camera evidence inbox</span>
+        <span class="section-kicker"><?= icon('inbox') ?> Camera evidence inbox</span>
     </div>
     <div class="head-actions">
-        <input class="search-input" id="reportSearchInput" type="search" placeholder="Search ID or location">
+        <div class="search-wrap"><?= icon('search') ?><input class="search-input" id="reportSearchInput" type="search" placeholder="Search ID or location"></div>
         <select class="filter-select" id="reportStatusFilter" aria-label="Filter by status">
             <option value="all">All statuses</option>
             <option value="Open">Unassigned</option>
@@ -15,14 +15,14 @@
 
 <div class="split-layout report-layout">
     <section class="panel detail-panel">
-        <div class="panel-head"><div><h2>Queue</h2><span id="reportsMeta">0 reports</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('reports') ?> Queue</h2><span id="reportsMeta">0 reports</span></div></div>
         <div class="report-stats" id="reportStats"></div>
         <div id="reportCards" class="report-cards"></div>
     </section>
 
     <section class="panel detail-panel case-panel">
         <div class="panel-head">
-            <div><h2>Case file</h2><span>Pi snapshot + measurements stay read-only</span></div>
+            <div><h2><?= icon('file') ?> Case file</h2><span>Pi snapshot + measurements stay read-only</span></div>
             <span class="tag info" id="editReportId">No selection</span>
         </div>
         <div class="case-body" id="reportCase"></div>
@@ -62,10 +62,10 @@
                 <textarea id="editNotes" rows="3" placeholder="What the traffic desk observed or instructed"></textarea>
             </div>
             <div class="editor-actions">
-                <a class="btn primary" id="assignOfficerLink" href="?page=dispatch">Assign officer</a>
-                <button type="submit" class="btn ghost">Save remarks</button>
-                <button type="button" class="btn ghost" id="markResolvedBtn">Mark resolved</button>
-                <button type="button" class="btn ghost" id="markFalsePositiveBtn">Not congestion</button>
+                <a class="btn primary" id="assignOfficerLink" href="?page=dispatch"><?= icon('user-check') ?> Assign officer</a>
+                <button type="submit" class="btn ghost"><?= icon('save') ?> Save remarks</button>
+                <button type="button" class="btn ghost" id="markResolvedBtn"><?= icon('check') ?> Mark resolved</button>
+                <button type="button" class="btn ghost" id="markFalsePositiveBtn"><?= icon('shield-off') ?> Not congestion</button>
             </div>
         </form>
     </section>

@@ -8,9 +8,9 @@ function renderReportStats() {
     const assigned = cameraReports.filter((report) => report.status === 'Assigned').length;
     const camera = cameraReports.filter((report) => report.status !== 'Resolved').length;
     target.innerHTML = `
-        <div><strong>${open}</strong><span>Unassigned</span></div>
-        <div><strong>${assigned}</strong><span>With a unit</span></div>
-        <div><strong>${camera}</strong><span>From camera</span></div>
+        <div>${icon('inbox')}<strong>${open}</strong><span>Unassigned</span></div>
+        <div>${icon('send')}<strong>${assigned}</strong><span>With a unit</span></div>
+        <div>${icon('camera')}<strong>${camera}</strong><span>From camera</span></div>
     `;
 }
 
@@ -25,7 +25,7 @@ function renderReportsPage() {
     meta.textContent = `${reports.length} of ${state.reports.length}`;
 
     if (!reports.length) {
-        cards.innerHTML = '<div class="report-card empty">No camera reports yet. Run traffic_vision.py on the video. A case appears here after HEAVY or CRITICAL holds for 3 intervals and a snapshot is written.</div>';
+        cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py on the video. A case appears after HEAVY or CRITICAL holds for 3 intervals and a snapshot is written.');
         selectedReportId = null;
         resetEditor();
         return;
@@ -35,7 +35,7 @@ function renderReportsPage() {
         return `
             <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${report.id}">
                 <div class="report-card-main">
-                    <strong>${report.id} · ${report.location}</strong>
+                    <strong>${icon('camera')} ${report.id} · ${report.location}</strong>
                     <small>Camera · ${report.vehicleCount} veh · ${report.congestionScore}% · ${formatDateTime(report.createdAtIso)}</small>
                 </div>
                 <div class="report-card-badges">
@@ -83,7 +83,7 @@ function fillReportEditor(reportId) {
     if (assignLink) {
         assignLink.href = `?page=dispatch&report=${encodeURIComponent(report.id)}`;
         assignLink.classList.toggle('is-disabled', report.status === 'Resolved');
-        assignLink.textContent = report.status === 'Open' ? 'Assign officer' : 'Open in Dispatch';
+        assignLink.innerHTML = `${icon('user-check')} ${report.status === 'Open' ? 'Assign officer' : 'Open in Dispatch'}`;
     }
 
     const markResolvedBtn = document.getElementById('markResolvedBtn');
@@ -127,9 +127,11 @@ function resetEditor() {
     setValue('editStatus', 'Open');
     setValue('editContext', '');
     setValue('editNotes', '');
+    const manualFields = document.getElementById('manualFields');
+    if (manualFields) manualFields.hidden = true;
     const caseBody = document.getElementById('reportCase');
     if (caseBody) {
-        caseBody.innerHTML = '<p class="panel-note">No camera case yet. Run traffic_vision.py; HEAVY/CRITICAL for 3 intervals creates the report and snapshot here.</p>';
+        caseBody.innerHTML = emptyState('file', 'No camera case yet', 'Run traffic_vision.py; HEAVY or CRITICAL for 3 intervals creates the report and snapshot here.');
     }
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = true;

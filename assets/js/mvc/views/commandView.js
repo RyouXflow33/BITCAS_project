@@ -53,12 +53,12 @@ function renderCameraBanner() {
     banner.hidden = false;
     if (!isVision) {
         banner.dataset.state = 'simulated';
-        banner.innerHTML = '<strong>Simulated data</strong><span>No vision node detected. Numbers on this page are not from a camera.</span>';
+        banner.innerHTML = `${icon('zap')}<div><strong>Simulated data</strong><span>No vision node detected. Numbers on this page are not from a camera.</span></div>`;
         return;
     }
 
     banner.dataset.state = 'offline';
-    banner.innerHTML = `<strong>Camera offline</strong><span>Last reading ${formatDateTime(state.live.lastSyncIso)}. Figures below are stale.</span>`;
+    banner.innerHTML = `${icon('offline')}<div><strong>Camera offline</strong><span>Last reading ${formatDateTime(state.live.lastSyncIso)}. Figures below are stale.</span></div>`;
 }
 
 function renderVisionSummary() {
@@ -101,7 +101,7 @@ function renderSnapshotPanel() {
     if (!preview || !meta || !list) return;
 
     if (!latest) {
-        preview.innerHTML = '<div class="snapshot-placeholder">NO SNAPSHOT</div>';
+        preview.innerHTML = `<div class="snapshot-placeholder">${icon('camera-off')}<span>No camera frame yet</span></div>`;
         meta.textContent = 'Last snapshot: none';
     } else {
         preview.innerHTML = `<img src="${latest.image}" alt="Simulated camera snapshot">`;
@@ -109,7 +109,7 @@ function renderSnapshotPanel() {
     }
 
     if (!state.snapshots.length) {
-        list.innerHTML = '<div class="snapshot-item">No stored snapshots.</div>';
+        list.innerHTML = emptyState('camera', 'No stored snapshots', 'Capture a snapshot from the live map when you need a still frame.');
         return;
     }
 
@@ -126,7 +126,7 @@ function renderAdvisoryTimeline() {
     if (!target) return;
 
     if (!state.advisories.length) {
-        target.innerHTML = '<div class="timeline-empty">No advisories yet.</div>';
+        target.innerHTML = emptyState('inbox', 'No advisories yet', 'Broadcast a message when congestion needs a public notice.');
         return;
     }
 

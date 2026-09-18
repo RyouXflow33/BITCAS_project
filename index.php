@@ -14,6 +14,8 @@ $pageTitle = $titleMap[$page];
 function navClass(string $current, string $item): string {
     return $current === $item ? 'nav-item active' : 'nav-item';
 }
+
+require_once __DIR__ . '/includes/icons.php';
 ?>
 <!doctype html>
 <html lang="en">
@@ -27,20 +29,22 @@ function navClass(string $current, string $item): string {
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body data-page="<?= htmlspecialchars($page) ?>">
+<?php render_icon_sprite(); ?>
 <div class="auth-overlay" id="authOverlay" hidden>
     <form class="login-card" id="loginForm">
+        <div class="login-mark"><?= icon('map') ?></div>
         <h2>BITCAS Login</h2>
         <p>LGU Traffic Dashboard</p>
 
         <label for="loginUsername">Username</label>
-        <input id="loginUsername" type="text" autocomplete="username" required>
+        <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" type="text" autocomplete="username" required></div>
 
         <label for="loginPassword">Password</label>
-        <input id="loginPassword" type="password" autocomplete="current-password" required>
+        <div class="field-wrap"><?= icon('badge') ?><input id="loginPassword" type="password" autocomplete="current-password" required></div>
 
         <small>Demo credentials: lguadmin / bitcas123</small>
         <div id="loginError" class="login-error"></div>
-        <button class="btn primary full" type="submit">Login</button>
+        <button class="btn primary full" type="submit"><?= icon('login') ?> Login</button>
     </form>
 </div>
 
@@ -50,7 +54,7 @@ function navClass(string $current, string $item): string {
     <main class="main">
         <header class="topbar">
             <div class="topbar-left">
-                <button class="icon-btn mobile-menu" id="menuToggle" aria-label="Open navigation">☰</button>
+                <button class="icon-btn mobile-menu" id="menuToggle" aria-label="Open navigation"><?= icon('menu') ?></button>
                 <div>
                     <div class="eyebrow">BITCAS</div>
                     <h1><?= htmlspecialchars($pageTitle) ?></h1>
@@ -65,7 +69,7 @@ function navClass(string $current, string $item): string {
                         <small id="currentUserRole">Traffic Desk</small>
                     </div>
                 </div>
-                <button class="btn ghost" id="logoutBtn" type="button">Logout</button>
+                <button class="btn ghost" id="logoutBtn" type="button"><?= icon('logout') ?> Logout</button>
             </div>
         </header>
 
