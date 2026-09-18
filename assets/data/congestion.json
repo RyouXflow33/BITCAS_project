@@ -1,25 +1,77 @@
 {
-  "timestamp": "2026-09-12T20:23:19.844439",
-  "congestion_level": "LIGHT",
-  "color": "#27ae60",
-  "label": "LIGHT",
-  "vehicle_count": 4,
-  "detections_count": 4,
-  "smoothed_vehicle_count": 4.23,
-  "source": "traffic_vision_system",
+  "schema": 2,
+  "camera_id": "CAM-SAMPLE-01",
+  "site_name": "Villamonte Street Intersection (SAMPLE DATA)",
+  "timestamp": "2026-09-18T10:34:00",
+  "congestion_level": "CRITICAL",
+  "congestion_score": 87,
+  "vehicles_in_frame": 20,
+  "smoothed_vehicle_count": 20,
+  "occupancy_pct": 79.5,
+  "avg_speed_kph": 2.9,
+  "speed_calibrated": true,
+  "flow": {
+    "window_seconds": 3.0,
+    "per_minute": 1.0,
+    "inbound": 0,
+    "outbound": 1
+  },
+  "totals": {
+    "date": "2026-09-18",
+    "today": 8656,
+    "by_class": {
+      "car": 4014,
+      "motorcycle": 3854,
+      "truck": 725,
+      "bus": 63
+    },
+    "by_direction": {
+      "inbound": 4334,
+      "outbound": 4322
+    }
+  },
+  "crossings": [],
+  "health": {
+    "fps": 6.4,
+    "backend": "sample_generator",
+    "detect_every": 1,
+    "cpu_temp_c": 54.2,
+    "uptime_s": 3600,
+    "roi_calibrated": true,
+    "lines_calibrated": true
+  },
+  "color": "#8b1a1a",
+  "label": "CRITICAL",
+  "vehicle_count": 20,
+  "detections_count": 20,
+  "source": "sample_generator",
   "vehicle_types": {
-    "car": 4
+    "car": 8,
+    "motorcycle": 9,
+    "truck": 2,
+    "bus": 1
   },
   "positions": [
-    0.8421875,
-    0.57421875,
-    0.478125,
-    0.9828125
+    0.023,
+    0.1216,
+    0.1376,
+    0.1737,
+    0.2292,
+    0.25,
+    0.3423,
+    0.3874,
+    0.4585,
+    0.4718,
+    0.6864,
+    0.7671,
+    0.7677,
+    0.7693,
+    0.798,
+    0.87,
+    0.8755,
+    0.9056,
+    0.9456,
+    0.9841
   ],
-  "avg_position": 0.7193359375,
-  "position_std": 0.2023327209530424,
-  "avg_speed": 28.38930920673311,
-  "speed_std": 16.431294747168764,
-  "max_speed": 47.913177007628704,
-  "min_speed": 10.103221237660998
+  "avg_speed": 2.9
 }

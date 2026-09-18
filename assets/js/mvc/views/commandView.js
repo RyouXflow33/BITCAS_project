@@ -3,30 +3,90 @@
 let mapState = null;
 
 function renderCommandPage() {
+    const payload = state.live.visionPayload || {};
+
     setText('statVehicleCount', String(state.live.currentVehicleCount));
     setText('statVehicleTrend', signedNumber(state.live.currentVehicleCount - state.live.previousVehicleCount));
     setText('statCongestionScore', `${state.live.congestionScore}%`);
-    setText('statCongestionDelta', `${signedNumber(state.live.congestionScore - scoreFromVehicleCount(state.live.previousVehicleCount))}%`);
 
-    const level = state.live.visionLevel || classifyCongestion(state.live.congestionScore);
-    setText('statCongestionClass', level);
-    setText('statClassNote', visionStatusCaption(level));
+    const level = state.live.visionLevel || 'LIGHT';
+    setText('statCongestionClass', `${level} | ${visionStatusCaption(level)}`);
     setText('statLastSync', formatTime(state.live.lastSyncIso));
+    setText('statClassNote', isVisionStale(state.live.lastSyncIso) ? 'stale' : 'live');
 
+    renderThroughputCard(payload);
+    renderCameraBanner();
     renderSnapshotPanel();
     renderVisionSummary();
     renderAdvisoryTimeline();
     renderMapLayers();
 }
 
+// Counted-today is throughput from the counting line, which only exists once
+// the vision node is calibrated. Vehicles-in-frame is a different measure and
+// must not be substituted for it.
+function renderThroughputCard(payload) {
+    const card = document.getElementById('statCountedCard');
+    const today = payload.totals && Number(payload.totals.today);
+    const available = Number.isFinite(today);
+
+    if (card) card.classList.toggle('unavailable', !available);
+    setText('statCountedToday', available ? String(today) : '--');
+    setText('statCountedNote', available
+        ? `${Object.keys((payload.totals && payload.totals.by_direction) || {}).length || 1} direction(s)`
+        : 'Needs counting line');
+}
+
+function renderCameraBanner() {
+    const banner = document.getElementById('cameraBanner');
+    if (!banner) return;
+
+    const payload = state.live.visionPayload || {};
+    const isVision = payload.source === 'traffic_vision_system';
+    const stale = isVisionStale(state.live.lastSyncIso);
+
+    if (isVision && !stale) {
+        banner.hidden = true;
+        return;
+    }
+
+    banner.hidden = false;
+    if (!isVision) {
+        banner.dataset.state = 'simulated';
+        banner.innerHTML = '<strong>Simulated data</strong><span>No vision node detected. Numbers on this page are not from a camera.</span>';
+        return;
+    }
+
+    banner.dataset.state = 'offline';
+    banner.innerHTML = `<strong>Camera offline</strong><span>Last reading ${formatDateTime(state.live.lastSyncIso)}. Figures below are stale.</span>`;
+}
+
 function renderVisionSummary() {
     const payload = state.live.visionPayload || {};
     renderVisionSource(payload.source || 'Simulation');
-    setText('visionVehicles', `Vehicles: ${payload.vehicle_count ?? '--'}`);
+
+    setText('visionVehicles', `In frame: ${payloadVehicleCount(payload) || '--'}`);
+    setText('visionOccupancy', `Road occupancy: ${formatOccupancy(payload)}`);
+
+    const flow = payload.flow || {};
+    const perMinute = Number(flow.per_minute);
+    const directions = Object.entries(flow)
+        .filter(([key]) => key !== 'window_seconds' && key !== 'per_minute')
+        .map(([key, value]) => `${key} ${value}`)
+        .join(', ');
+    setText('visionFlow', Number.isFinite(perMinute)
+        ? `Flow: ${perMinute.toFixed(1)} veh/min${directions ? ` (${directions})` : ''}`
+        : 'Flow: needs counting line');
+
+    setText('visionSpeed', `Avg speed: ${formatSpeed(payload)}`);
+
     const types = Object.entries(payload.vehicle_types || {}).map(([type, count]) => `${type}: ${count}`).join(', ');
     setText('visionTypes', `Types: ${types || '--'}`);
-    const avgSpeed = Number(payload.avg_speed);
-    setText('visionSpeed', `Avg speed: ${Number.isFinite(avgSpeed) ? avgSpeed.toFixed(1) : '--'} px/s`);
+
+    const health = payload.health || {};
+    setText('visionHealth', Number.isFinite(Number(health.fps))
+        ? `Node: ${health.backend} | ${Number(health.fps).toFixed(1)} FPS${health.cpu_temp_c ? ` | ${health.cpu_temp_c}C` : ''}`
+        : 'Node: --');
 }
 
 function renderVisionSource(source) {
@@ -119,13 +179,13 @@ function renderMapLayers() {
     groups.reports.clearLayers();
 
     const payload = state.live.visionPayload || {};
-    const trafficColor = payload.color || severityColor(classifyCongestion(state.live.congestionScore));
-    const trafficLevel = payload.congestion_level || classifyCongestion(state.live.congestionScore);
+    const trafficLevel = payload.congestion_level || state.live.visionLevel || 'LIGHT';
+    const trafficColor = payload.color || visionLevelColor(trafficLevel);
 
     L.geoJSON(VILLAMONTE_TRAFFIC_ROAD, {
         style: { color: trafficColor, weight: 10, opacity: 0.85, lineCap: 'round' },
         onEachFeature: (feature, layer) => {
-            layer.bindPopup(`<strong>${feature.properties.name}</strong><br>${trafficLevel} traffic<br>${payload.vehicle_count ?? 0} vehicles detected`);
+            layer.bindPopup(`<strong>${feature.properties.name}</strong><br>${trafficLevel} traffic (score ${state.live.congestionScore})<br>${payloadVehicleCount(payload) || 0} vehicles in frame`);
         }
     }).addTo(groups.road);
 

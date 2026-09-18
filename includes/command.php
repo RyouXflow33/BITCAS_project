@@ -8,11 +8,13 @@
     </div>
 </section>
 
+<div class="camera-banner" id="cameraBanner" hidden></div>
+
 <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon blue">#</div><div><span>Vehicles</span><strong id="statVehicleCount">0</strong><em class="up" id="statVehicleTrend">+0</em></div></div>
-    <div class="stat-card"><div class="stat-icon yellow">~</div><div><span>Score</span><strong id="statCongestionScore">0%</strong><em id="statCongestionDelta" class="down">-0%</em></div></div>
-    <div class="stat-card"><div class="stat-icon red">!</div><div><span>Class</span><strong id="statCongestionClass">Low</strong><em id="statClassNote" class="up">Normal</em></div></div>
-    <div class="stat-card"><div class="stat-icon green">*</div><div><span>Sync</span><strong id="statLastSync">--:--:--</strong><em class="up">VPN</em></div></div>
+    <div class="stat-card"><div class="stat-icon blue">#</div><div><span>Vehicles in frame</span><strong id="statVehicleCount">0</strong><em class="up" id="statVehicleTrend">+0</em></div></div>
+    <div class="stat-card" id="statCountedCard"><div class="stat-icon violet">&gt;</div><div><span>Counted today</span><strong id="statCountedToday">--</strong><em id="statCountedNote">crossings</em></div></div>
+    <div class="stat-card"><div class="stat-icon yellow">~</div><div><span>Congestion</span><strong id="statCongestionScore">0%</strong><em id="statCongestionClass">Low</em></div></div>
+    <div class="stat-card"><div class="stat-icon green">*</div><div><span>Last sync</span><strong id="statLastSync">--:--:--</strong><em id="statClassNote">Normal</em></div></div>
 </div>
 
 <div class="command-grid traffic-map-grid">
@@ -35,9 +37,12 @@
         </div>
         <div class="snapshot-meta" id="snapshotMeta">Last snapshot: none</div>
         <div class="vision-summary">
-            <span id="visionVehicles">Vehicles: --</span>
-            <span id="visionTypes">Types: --</span>
+            <span id="visionVehicles">In frame: --</span>
+            <span id="visionOccupancy">Road occupancy: --</span>
+            <span id="visionFlow">Flow: --</span>
             <span id="visionSpeed">Avg speed: --</span>
+            <span id="visionTypes">Types: --</span>
+            <span id="visionHealth">Node: --</span>
         </div>
         <div class="snapshot-list" id="snapshotList"></div>
     </section>

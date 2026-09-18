@@ -1,0 +1,65 @@
+{
+  "_readme": [
+    "BITCAS site configuration. All image coordinates are NORMALISED to 0..1 so the",
+    "config survives a change of capture resolution. Run `python calibrate.py` to",
+    "generate the roi / counting_lines / calibration blocks by clicking on a frame.",
+    "Values below are safe defaults that work uncalibrated: the ROI is the whole",
+    "frame and one counting line sits across the middle."
+  ],
+
+  "camera_id": "CAM-VILLAMONTE-01",
+  "site_name": "Villamonte Street Intersection",
+  "road_name": "Circumferential Road",
+  "lat": 10.6665,
+  "lng": 122.9645,
+
+  "roi": {
+    "calibrated": false,
+    "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+  },
+
+  "counting_lines": [
+    {
+      "id": "main",
+      "calibrated": false,
+      "start": [0.05, 0.55],
+      "end": [0.95, 0.55],
+      "positive_direction": "inbound",
+      "negative_direction": "outbound"
+    }
+  ],
+
+  "lanes": [],
+
+  "calibration": {
+    "calibrated": false,
+    "_note": "image_points are 4 normalised frame points on the road surface; world_points are the SAME points in metres on the ground plane, measured with a tape at the site. Order must match.",
+    "image_points": [[0.30, 0.90], [0.70, 0.90], [0.62, 0.55], [0.38, 0.55]],
+    "world_points": [[0.0, 0.0], [3.5, 0.0], [3.5, 15.0], [0.0, 15.0]]
+  },
+
+  "congestion": {
+    "_note": "capacity and free_flow_kph must be calibrated from your own first week of data. free_flow_kph = 85th percentile of observed speeds during a light hour.",
+    "capacity_vehicles": 20,
+    "free_flow_kph": 40.0,
+    "weights": { "occupancy": 0.45, "load": 0.30, "slowness": 0.25 },
+    "bands": { "moderate": 40, "heavy": 65, "critical": 85 },
+    "smoothing_window_seconds": 30
+  },
+
+  "tracking": {
+    "max_match_distance_px": 60,
+    "max_age_seconds": 2.0,
+    "min_speed_samples": 5,
+    "max_plausible_kph": 120
+  },
+
+  "publish": {
+    "update_interval_seconds": 3,
+    "history_interval_seconds": 60,
+    "snapshot_cooldown_seconds": 900,
+    "snapshot_streak": 3,
+    "max_snapshots": 100,
+    "spool_days": 3
+  }
+}
