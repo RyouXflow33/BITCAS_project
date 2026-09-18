@@ -5,6 +5,8 @@ let reportSearchQuery = '';
 let selectedReportId = null;
 
 function initReportsPage() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('report')) selectedReportId = params.get('report');
     bindReportActions();
     renderReportsPage();
 }
@@ -26,15 +28,6 @@ function bindReportActions() {
         });
     }
 
-    const newReportBtn = document.getElementById('newReportBtn');
-    if (newReportBtn) {
-        newReportBtn.addEventListener('click', () => {
-            selectedReportId = createManualReport();
-            renderReportsPage();
-            renderGlobalCounters();
-        });
-    }
-
     const cardContainer = document.getElementById('reportCards');
     if (cardContainer) {
         cardContainer.addEventListener('click', (event) => {
@@ -52,15 +45,24 @@ function bindReportActions() {
             event.preventDefault();
             if (!selectedReportId) return;
 
-            const updated = updateReport(selectedReportId, {
-                location: getValue('editLocation'),
-                vehicleCount: getValue('editVehicles'),
-                severity: getValue('editSeverity'),
-                status: getValue('editStatus'),
-                context: getValue('editContext'),
-                notes: getValue('editNotes')
-            });
-            if (!updated) return;
+            const report = findReport(selectedReportId);
+            if (!report) return;
+
+            if (isCameraReport(report)) {
+                report.notes = getValue('editNotes');
+                report.updatedAtIso = new Date().toISOString();
+                saveState();
+            } else {
+                const updated = updateReport(selectedReportId, {
+                    location: getValue('editLocation'),
+                    vehicleCount: getValue('editVehicles'),
+                    severity: getValue('editSeverity'),
+                    status: getValue('editStatus'),
+                    context: getValue('editContext'),
+                    notes: getValue('editNotes')
+                });
+                if (!updated) return;
+            }
 
             renderReportsPage();
             renderGlobalCounters();
@@ -116,9 +118,10 @@ function bindReportActions() {
 
 function getFilteredReports() {
     return state.reports.filter((report) => {
+        if (!isCameraReport(report)) return false;
         if (reportStatusFilter !== 'all' && report.status !== reportStatusFilter) return false;
         if (reportSearchQuery) {
-            const haystack = `${report.id} ${report.location}`.toLowerCase();
+            const haystack = `${report.id} ${report.location} ${report.cameraId || ''}`.toLowerCase();
             if (!haystack.includes(reportSearchQuery)) return false;
         }
         return true;

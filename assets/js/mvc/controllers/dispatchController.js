@@ -6,6 +6,8 @@ let selectedOfficerId = null;
 let dispatchTab = 'board';
 
 function initDispatchPage() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('report')) selectedDispatchReportId = params.get('report');
     bindDispatchActions();
     autoSelectDispatchReport();
     autoSelectOfficer();
@@ -74,12 +76,54 @@ function bindDispatchActions() {
             renderDispatchPage();
         });
     }
+
+    const officerForm = document.getElementById('officerCreateForm');
+    if (officerForm) {
+        officerForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const errorEl = document.getElementById('officerCreateError');
+            const result = createOfficer({
+                id: getValue('officerBadge'),
+                fullName: getValue('officerFullName'),
+                rank: getValue('officerRank'),
+                contact: getValue('officerContact'),
+                radio: getValue('officerRadio'),
+                zone: getValue('officerZone'),
+                shiftStart: getValue('officerShiftStart'),
+                shiftEnd: getValue('officerShiftEnd'),
+                restDay: getValue('officerRestDay'),
+                skills: getValue('officerSkills')
+            });
+
+            if (result.error) {
+                if (errorEl) {
+                    errorEl.hidden = false;
+                    errorEl.textContent = result.error;
+                }
+                return;
+            }
+
+            if (errorEl) {
+                errorEl.hidden = true;
+                errorEl.textContent = '';
+            }
+            officerForm.reset();
+            setValue('officerZone', 'Villamonte');
+            setValue('officerShiftStart', '06:00');
+            setValue('officerShiftEnd', '14:00');
+            selectedOfficerId = result.officer.id;
+            dispatchTab = 'roster';
+            setDispatchTab(dispatchTab);
+            renderDispatchPage();
+            renderGlobalCounters();
+        });
+    }
 }
 
 function autoSelectDispatchReport() {
-    if (selectedDispatchReportId && findReport(selectedDispatchReportId)?.status !== 'Resolved') return;
-    const open = state.reports
-        .filter((report) => report.status !== 'Resolved')
+    const current = selectedDispatchReportId ? findReport(selectedDispatchReportId) : null;
+    if (current && isCameraReport(current) && current.status !== 'Resolved') return;
+    const open = getOpenCameraReports()
         .sort((a, b) => b.congestionScore - a.congestionScore);
     selectedDispatchReportId = open[0]?.id || null;
 }

@@ -1,5 +1,5 @@
 // MVC: shared constants and static datasets (Model layer support).
-const BITCAS_STORAGE_KEY = 'bitcas_ui_sim_v1';
+const BITCAS_STORAGE_KEY = 'bitcas_ui_ops_v1';
 const BITCAS_AUTH_KEY = 'bitcas_auth_v1';
 const VISION_FIXTURE_URL = 'assets/data/congestion.json';
 const VISION_POLL_MS = 3000;

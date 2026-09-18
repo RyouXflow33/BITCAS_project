@@ -1,15 +1,16 @@
-// MVC - View: Congested Reports page rendering (list, stats, editor).
+// MVC - View: Congested Reports as a camera case file, not a generic editor.
 
 function renderReportStats() {
     const target = document.getElementById('reportStats');
     if (!target) return;
-    const open = state.reports.filter((report) => report.status === 'Open').length;
-    const assigned = state.reports.filter((report) => report.status === 'Assigned').length;
-    const resolved = state.reports.filter((report) => report.status === 'Resolved').length;
+    const cameraReports = state.reports.filter(isCameraReport);
+    const open = cameraReports.filter((report) => report.status === 'Open').length;
+    const assigned = cameraReports.filter((report) => report.status === 'Assigned').length;
+    const camera = cameraReports.filter((report) => report.status !== 'Resolved').length;
     target.innerHTML = `
-        <div><strong>${open}</strong><span>Open</span></div>
-        <div><strong>${assigned}</strong><span>Assigned</span></div>
-        <div><strong>${resolved}</strong><span>Resolved</span></div>
+        <div><strong>${open}</strong><span>Unassigned</span></div>
+        <div><strong>${assigned}</strong><span>With a unit</span></div>
+        <div><strong>${camera}</strong><span>From camera</span></div>
     `;
 }
 
@@ -21,28 +22,30 @@ function renderReportsPage() {
     renderReportStats();
     const reports = getFilteredReports();
 
-    meta.textContent = `${reports.length} of ${state.reports.length} reports`;
+    meta.textContent = `${reports.length} of ${state.reports.length}`;
 
     if (!reports.length) {
-        cards.innerHTML = '<div class="report-card empty">No reports match the current filter.</div>';
+        cards.innerHTML = '<div class="report-card empty">No camera reports yet. Run traffic_vision.py on the video. A case appears here after HEAVY or CRITICAL holds for 3 intervals and a snapshot is written.</div>';
         selectedReportId = null;
         resetEditor();
         return;
     }
 
-    cards.innerHTML = reports.map((report) => `
-        <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${report.id}">
-            <div class="report-card-main">
-                <strong>${report.id} | ${report.location}</strong>
-                <small>${report.vehicleCount} veh &middot; ${report.congestionScore}% score &middot; ${formatDateTime(report.createdAtIso)}</small>
-            </div>
-            <div class="report-card-badges">
-                <span class="tag ${severityTagClass(report.severity)}">${report.severity}</span>
-                <span class="tag ${statusTagClass(report.status)}">${report.status}</span>
-                ${report.falsePositive ? '<span class="tag status-open">Not congestion</span>' : ''}
-            </div>
-        </button>
-    `).join('');
+    cards.innerHTML = reports.map((report) => {
+        return `
+            <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${report.id}">
+                <div class="report-card-main">
+                    <strong>${report.id} · ${report.location}</strong>
+                    <small>Camera · ${report.vehicleCount} veh · ${report.congestionScore}% · ${formatDateTime(report.createdAtIso)}</small>
+                </div>
+                <div class="report-card-badges">
+                    <span class="tag ${severityTagClass(report.severity)}">${report.severity}</span>
+                    <span class="tag ${statusTagClass(report.status)}">${report.status === 'Open' ? 'Unassigned' : report.status}</span>
+                    ${report.falsePositive ? '<span class="tag status-open">Not congestion</span>' : ''}
+                </div>
+            </button>
+        `;
+    }).join('');
 
     if (!selectedReportId || !reports.some((report) => report.id === selectedReportId)) {
         selectedReportId = reports[0].id;
@@ -53,31 +56,67 @@ function renderReportsPage() {
 
 function fillReportEditor(reportId) {
     const report = findReport(reportId);
-    if (!report) return;
+    const caseBody = document.getElementById('reportCase');
+    if (!report || !caseBody) return;
+
+    const camera = isCameraReport(report);
+    const officer = getAssignedOfficer(report.id);
+    const occupancy = Number.isFinite(Number(report.occupancyPct)) ? `${Number(report.occupancyPct).toFixed(1)}%` : '--';
+    const speed = Number.isFinite(Number(report.avgSpeedKph)) ? `${Number(report.avgSpeedKph).toFixed(1)} km/h` : 'Not calibrated';
+
     setText('editReportId', report.id);
     setValue('editLocation', report.location);
     setValue('editVehicles', String(report.vehicleCount));
     setValue('editSeverity', report.severity);
     setValue('editStatus', report.status);
-    setValue('editContext', report.context);
+    setValue('editContext', report.context || '');
     setValue('editNotes', report.notes || '');
-    setText('metaCreated', formatDateTime(report.createdAtIso));
-    setText('metaUpdated', formatDateTime(report.updatedAtIso));
-    setText('metaSource', getReportSource(report));
-    setText('metaOfficer', getAssignedOfficer(report.id));
+
+    const manualFields = document.getElementById('manualFields');
+    if (manualFields) manualFields.hidden = camera;
+    ['editLocation', 'editVehicles', 'editSeverity', 'editStatus'].forEach((id) => {
+        const field = document.getElementById(id);
+        if (field) field.required = !camera;
+    });
+
+    const assignLink = document.getElementById('assignOfficerLink');
+    if (assignLink) {
+        assignLink.href = `?page=dispatch&report=${encodeURIComponent(report.id)}`;
+        assignLink.classList.toggle('is-disabled', report.status === 'Resolved');
+        assignLink.textContent = report.status === 'Open' ? 'Assign officer' : 'Open in Dispatch';
+    }
+
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = report.status === 'Resolved';
     const falsePositiveBtn = document.getElementById('markFalsePositiveBtn');
     if (falsePositiveBtn) falsePositiveBtn.disabled = Boolean(report.falsePositive) || report.status === 'Resolved';
-    renderReportEvidence(report);
+
+    caseBody.innerHTML = `
+        <div class="case-evidence">${renderEvidenceHtml(report)}</div>
+        <div class="report-meta-strip">
+            <div><span>Opened</span><strong>${formatDateTime(report.createdAtIso)}</strong></div>
+            <div><span>Source</span><strong>Pi camera · 3-interval snapshot</strong></div>
+            <div><span>Camera</span><strong>${report.cameraId || (camera ? 'CAM-VILLAMONTE-01' : '--')}</strong></div>
+            <div><span>Officer</span><strong>${officer}</strong></div>
+        </div>
+        <div class="report-meta-strip">
+            <div><span>Congestion</span><strong>${report.severity} · ${report.congestionScore}%</strong></div>
+            <div><span>Vehicles in frame</span><strong>${report.vehicleCount}</strong></div>
+            <div><span>Occupancy</span><strong>${occupancy}</strong></div>
+            <div><span>Avg speed</span><strong>${speed}</strong></div>
+        </div>
+        <div class="case-log">
+            <span>System log</span>
+            <p>${report.context || '—'}</p>
+        </div>
+    `;
 }
 
-function renderReportEvidence(report) {
-    const target = document.getElementById('reportEvidence');
-    if (!target) return;
-    target.innerHTML = report.snapshotUrl
-        ? `<img src="${report.snapshotUrl}" alt="Traffic evidence for ${report.id}"><small>Evidence snapshot: sustained HEAVY traffic</small>`
-        : '<div class="report-evidence-empty">No evidence snapshot attached.</div>';
+function renderEvidenceHtml(report) {
+    if (report.snapshotUrl) {
+        return `<img src="${report.snapshotUrl}" alt="Traffic evidence for ${report.id}"><small>Pi snapshot after 3 HEAVY/CRITICAL publish intervals</small>`;
+    }
+    return '<div class="report-evidence-empty">Camera report — snapshot appears here when traffic_vision.py writes assets/snapshots and congestion.json includes snapshot_url.</div>';
 }
 
 function resetEditor() {
@@ -88,15 +127,14 @@ function resetEditor() {
     setValue('editStatus', 'Open');
     setValue('editContext', '');
     setValue('editNotes', '');
-    setText('metaCreated', '--');
-    setText('metaUpdated', '--');
-    setText('metaSource', '--');
-    setText('metaOfficer', '--');
+    const caseBody = document.getElementById('reportCase');
+    if (caseBody) {
+        caseBody.innerHTML = '<p class="panel-note">No camera case yet. Run traffic_vision.py; HEAVY/CRITICAL for 3 intervals creates the report and snapshot here.</p>';
+    }
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = true;
     const falsePositiveBtn = document.getElementById('markFalsePositiveBtn');
     if (falsePositiveBtn) falsePositiveBtn.disabled = true;
-    renderReportEvidence({});
 }
 
 function highlightSelectedReport() {

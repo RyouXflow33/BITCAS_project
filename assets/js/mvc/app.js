@@ -15,6 +15,30 @@ function bootSession() {
     if (page === 'analytics') initAnalyticsPage();
     if (page === 'incidents') initReportsPage();
     if (page === 'dispatch') initDispatchPage();
+
+    startGlobalVisionPoller();
+}
+
+function startGlobalVisionPoller() {
+    if (window.__bitcasVisionPoller) return;
+
+    const tick = async () => {
+        try {
+            const payload = await fetchVisionFeed();
+            applyVisionPayload(payload, 'traffic_vision_system');
+            if (document.body.dataset.page === 'command') renderVisionSource('Vision JSON');
+        } catch (error) {
+            if (document.body.dataset.page === 'command') renderVisionSource('Simulation fallback');
+        }
+        renderGlobalCounters();
+        const page = document.body.dataset.page;
+        if (page === 'command') renderCommandPage();
+        if (page === 'incidents') renderReportsPage();
+        if (page === 'dispatch') renderDispatchPage();
+    };
+
+    tick();
+    window.__bitcasVisionPoller = setInterval(tick, VISION_POLL_MS);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

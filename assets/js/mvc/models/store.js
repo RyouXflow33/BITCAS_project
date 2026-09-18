@@ -20,39 +20,21 @@ function saveState() {
 function buildDefaultState() {
     const nowIso = new Date().toISOString();
     return {
-        version: 1,
-        nextReportNumber: 1048,
-        nextAssignmentNumber: 61,
+        version: 2,
+        nextReportNumber: 1,
+        nextAssignmentNumber: 1,
         live: {
-            currentVehicleCount: 38,
-            previousVehicleCount: 34,
-            congestionScore: 47,
+            currentVehicleCount: 0,
+            previousVehicleCount: 0,
+            congestionScore: 0,
             lastSyncIso: nowIso
         },
-        telemetry: seedTelemetry(),
-        reports: [
-            createSeedReport({ id: 'RPT-1042', location: 'Villamonte Street Intersection', severity: 'High', score: 76, vehicles: 62, status: 'Assigned', lat: 10.6758, lng: 122.9542, context: 'Outbound lane queue exceeded threshold for 3 intervals.' }),
-            createSeedReport({ id: 'RPT-1043', location: 'Lacson Street Access', severity: 'Moderate', score: 58, vehicles: 49, status: 'Open', lat: 10.6774, lng: 122.953, context: 'Intermittent stop-and-go traffic near school zone.' }),
-            createSeedReport({ id: 'RPT-1044', location: 'B.S. Aquino Drive Segment', severity: 'Severe', score: 89, vehicles: 77, status: 'Open', lat: 10.6747, lng: 122.9558, context: 'Extended congestion observed during signal cycle mismatch.' }),
-            createSeedReport({ id: 'RPT-1045', location: 'Rizal Street Diversion', severity: 'Low', score: 31, vehicles: 26, status: 'Resolved', lat: 10.6761, lng: 122.9569, context: 'Temporary congestion normalized after lane clearing.' })
-        ],
+        telemetry: [],
+        reports: [],
         snapshots: [],
         advisories: [],
-        officers: defaultOfficerRoster(),
-        assignments: [
-            {
-                id: 'DSP-060',
-                reportId: 'RPT-1042',
-                officerId: 'BTAO-22',
-                status: 'Assigned',
-                assignedAtIso: nowIso,
-                acknowledgedAtIso: nowIso,
-                enrouteAtIso: null,
-                onsceneAtIso: null,
-                resolvedAtIso: null,
-                fieldNotes: ''
-            }
-        ]
+        officers: [],
+        assignments: []
     };
 }
 
@@ -64,9 +46,9 @@ function ensureStateShape(s) {
     if (!s.officers) s.officers = [];
     if (!s.assignments) s.assignments = [];
     if (!s.live) s.live = { currentVehicleCount: 0, previousVehicleCount: 0, congestionScore: 0, lastSyncIso: new Date().toISOString() };
-    if (!s.nextReportNumber) s.nextReportNumber = 2000;
-    if (!s.nextAssignmentNumber) s.nextAssignmentNumber = 100;
-    ensureOfficerRoster(s);
+    if (!s.nextReportNumber) s.nextReportNumber = 1;
+    if (!s.nextAssignmentNumber) s.nextAssignmentNumber = 1;
+    s.officers = s.officers.map(normalizeOfficer);
     s.assignments = s.assignments.map(normalizeAssignment);
     s.reports.forEach((report) => {
         if (typeof report.falsePositive !== 'boolean') report.falsePositive = false;
@@ -74,72 +56,30 @@ function ensureStateShape(s) {
     });
 }
 
-function defaultOfficerRoster() {
-    return [
-        {
-            id: 'BTAO-17', name: 'Officer J. Ramos', fullName: 'Juan Ramos', rank: 'Traffic Enforcer',
-            contact: '0917-555-1017', radio: 'Victor-17', zone: 'Villamonte',
-            shiftStart: '06:00', shiftEnd: '14:00', restDay: 'Sunday',
-            status: 'Available', skills: ['Traffic control', 'First aid'], dateAssigned: '2025-03-12'
-        },
-        {
-            id: 'BTAO-08', name: 'Officer M. Lopez', fullName: 'Maria Lopez', rank: 'Senior Enforcer',
-            contact: '0918-555-1008', radio: 'Victor-08', zone: 'Lacson',
-            shiftStart: '06:00', shiftEnd: '14:00', restDay: 'Monday',
-            status: 'Available', skills: ['Traffic control', 'School zone'], dateAssigned: '2024-11-04'
-        },
-        {
-            id: 'BTAO-22', name: 'Officer D. Velasco', fullName: 'Diego Velasco', rank: 'Traffic Enforcer',
-            contact: '0916-555-1022', radio: 'Victor-22', zone: 'Aquino Drive',
-            shiftStart: '14:00', shiftEnd: '22:00', restDay: 'Wednesday',
-            status: 'Assigned', skills: ['Traffic control', 'Tow coordination'], dateAssigned: '2025-01-20'
-        },
-        {
-            id: 'BTAO-31', name: 'Officer C. Alonzo', fullName: 'Carlo Alonzo', rank: 'Traffic Enforcer',
-            contact: '0915-555-1031', radio: 'Victor-31', zone: 'Rizal Diversion',
-            shiftStart: '06:00', shiftEnd: '14:00', restDay: 'Saturday',
-            status: 'Available', skills: ['Traffic control', 'Incident response'], dateAssigned: '2025-06-02'
-        },
-        {
-            id: 'BTAO-12', name: 'Officer A. Sison', fullName: 'Ana Sison', rank: 'Traffic Enforcer',
-            contact: '0917-555-1012', radio: 'Victor-12', zone: 'Villamonte',
-            shiftStart: '14:00', shiftEnd: '22:00', restDay: 'Tuesday',
-            status: 'Available', skills: ['Traffic control', 'First aid'], dateAssigned: '2025-08-18'
-        },
-        {
-            id: 'BTAO-44', name: 'Officer R. Dela Cruz', fullName: 'Ramon Dela Cruz', rank: 'Team Leader',
-            contact: '0919-555-1044', radio: 'Victor-44', zone: 'Villamonte',
-            shiftStart: '22:00', shiftEnd: '06:00', restDay: 'Friday',
-            status: 'Off duty', skills: ['Traffic control', 'Dispatch liaison'], dateAssigned: '2024-05-09'
-        }
-    ];
-}
-
-function ensureOfficerRoster(s) {
-    const byId = new Map((s.officers || []).map((officer) => [officer.id, officer]));
-    defaultOfficerRoster().forEach((seed) => {
-        if (!byId.has(seed.id)) s.officers.push({ ...seed });
-    });
-    s.officers = s.officers.map(normalizeOfficer);
-}
-
 function normalizeOfficer(officer) {
-    const seed = defaultOfficerRoster().find((item) => item.id === officer.id) || {};
+    const fullName = officer.fullName || officer.name || officer.id;
     return {
-        id: officer.id,
-        name: officer.name || seed.name || officer.id,
-        fullName: officer.fullName || seed.fullName || officer.name || officer.id,
-        rank: officer.rank || seed.rank || 'Traffic Enforcer',
-        contact: officer.contact || seed.contact || '--',
-        radio: officer.radio || seed.radio || officer.id,
-        zone: officer.zone || seed.zone || 'Villamonte',
-        shiftStart: officer.shiftStart || seed.shiftStart || '06:00',
-        shiftEnd: officer.shiftEnd || seed.shiftEnd || '14:00',
-        restDay: officer.restDay || seed.restDay || 'Sunday',
+        id: String(officer.id || '').toUpperCase(),
+        name: officer.name || displayNameFromFullName(fullName),
+        fullName,
+        rank: officer.rank || 'Traffic Enforcer',
+        contact: officer.contact || '--',
+        radio: officer.radio || officer.id,
+        zone: officer.zone || 'Villamonte',
+        shiftStart: officer.shiftStart || '06:00',
+        shiftEnd: officer.shiftEnd || '14:00',
+        restDay: officer.restDay || 'Sunday',
         status: officer.status || 'Available',
-        skills: Array.isArray(officer.skills) && officer.skills.length ? officer.skills : (seed.skills || ['Traffic control']),
-        dateAssigned: officer.dateAssigned || seed.dateAssigned || '2025-01-01'
+        skills: Array.isArray(officer.skills) && officer.skills.length ? officer.skills : ['Traffic control'],
+        dateAssigned: officer.dateAssigned || new Date().toISOString().slice(0, 10)
     };
+}
+
+function displayNameFromFullName(fullName) {
+    const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return 'Officer';
+    if (parts.length === 1) return `Officer ${parts[0]}`;
+    return `Officer ${parts[0][0]}. ${parts[parts.length - 1]}`;
 }
 
 function normalizeAssignment(assignment) {
@@ -155,39 +95,6 @@ function normalizeAssignment(assignment) {
         resolvedAtIso: assignment.resolvedAtIso || null,
         fieldNotes: assignment.fieldNotes || ''
     };
-}
-
-function createSeedReport({ id, location, severity, score, vehicles, status, lat, lng, context }) {
-    const now = new Date();
-    return {
-        id,
-        location,
-        severity,
-        congestionScore: score,
-        vehicleCount: vehicles,
-        status,
-        lat,
-        lng,
-        context,
-        notes: '',
-        createdAtIso: new Date(now.getTime() - Math.floor(Math.random() * 50 + 10) * 60000).toISOString(),
-        updatedAtIso: now.toISOString()
-    };
-}
-
-function seedTelemetry() {
-    const result = [];
-    const now = Date.now();
-    for (let i = 23; i >= 0; i -= 1) {
-        const ts = new Date(now - i * 60 * 60 * 1000).toISOString();
-        const base = 24 + Math.round(Math.random() * 62);
-        result.push({
-            timestampIso: ts,
-            vehicleCount: base,
-            congestionScore: scoreFromVehicleCount(base)
-        });
-    }
-    return result;
 }
 
 // --- Session model ---
@@ -334,7 +241,7 @@ function applyVisionPayload(payload, source) {
     if (!latest || latest.sourceTimestamp !== payload.timestamp) {
         state.telemetry.push(buildTelemetryEntry(payload, nowIso, nextVehicleCount, nextScore));
         state.telemetry = state.telemetry.slice(-240);
-        maybeCreateEvidenceReport(payload, nextVehicleCount, nextScore, nowIso);
+        maybeCreateEvidenceReport({ ...payload, source: payload.source || source }, nextVehicleCount, nextScore, nowIso);
     }
 
     saveState();
@@ -366,6 +273,7 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
 }
 
 function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
+    if ((payload.source || '') === 'bitcas_simulation') return;
     const isSevere = payload.congestion_level === 'HEAVY' || payload.congestion_level === 'CRITICAL';
     if (!payload.snapshot_url || !isSevere) return;
     if (state.reports.some((report) => report.snapshotUrl === payload.snapshot_url)) return;
@@ -492,33 +400,6 @@ function findReport(reportId) {
     return state.reports.find((item) => item.id === reportId);
 }
 
-function createManualReport() {
-    const nowIso = new Date().toISOString();
-    const score = state.live.congestionScore;
-    const report = {
-        id: `RPT-${state.nextReportNumber}`,
-        location: 'Villamonte Street Intersection',
-        severity: classifyCongestion(score),
-        congestionScore: score,
-        vehicleCount: state.live.currentVehicleCount,
-        status: 'Open',
-        lat: 10.6758,
-        lng: 122.9542,
-        source: 'Manual entry',
-        context: 'Manually created by LGU admin.',
-        notes: '',
-        falsePositive: false,
-        createdAtIso: nowIso,
-        updatedAtIso: nowIso,
-        resolvedAtIso: null
-    };
-
-    state.nextReportNumber += 1;
-    state.reports.unshift(report);
-    saveState();
-    return report.id;
-}
-
 function updateReport(reportId, fields) {
     const report = findReport(reportId);
     if (!report) return null;
@@ -555,6 +436,14 @@ function getReportSource(report) {
     if (report.source) return report.source;
     if (report.snapshotUrl || (report.context || '').startsWith('Automatically generated')) return 'Vision system';
     return 'Manual entry';
+}
+
+function isCameraReport(report) {
+    return getReportSource(report) === 'Vision system';
+}
+
+function getOpenCameraReports() {
+    return state.reports.filter((report) => isCameraReport(report) && report.status !== 'Resolved');
 }
 
 function getAssignedOfficer(reportId) {
@@ -665,6 +554,53 @@ function assignmentSla(assignment, report) {
         onScene,
         breached: !onScene && remaining < 0
     };
+}
+
+function nextOfficerId() {
+    const numbers = state.officers.map((officer) => {
+        const match = String(officer.id).match(/(\d+)$/);
+        return match ? Number(match[1]) : 0;
+    });
+    const next = Math.max(0, ...numbers) + 1;
+    return `BTAO-${String(next).padStart(2, '0')}`;
+}
+
+function createOfficer(fields) {
+    const fullName = String(fields.fullName || '').trim();
+    if (!fullName) return { error: 'Full name is required.' };
+
+    let id = String(fields.id || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (!id) id = nextOfficerId();
+    else if (/^\d+$/.test(id)) id = `BTAO-${id.padStart(2, '0')}`;
+
+    if (state.officers.some((officer) => officer.id === id)) {
+        return { error: `Badge ${id} is already on the roster.` };
+    }
+
+    const skills = String(fields.skills || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    const officer = normalizeOfficer({
+        id,
+        fullName,
+        name: displayNameFromFullName(fullName),
+        rank: fields.rank,
+        contact: fields.contact,
+        radio: fields.radio || id,
+        zone: fields.zone || 'Villamonte',
+        shiftStart: fields.shiftStart,
+        shiftEnd: fields.shiftEnd,
+        restDay: fields.restDay,
+        status: 'Available',
+        skills,
+        dateAssigned: new Date().toISOString().slice(0, 10)
+    });
+
+    state.officers.push(officer);
+    saveState();
+    return { officer };
 }
 
 function officerPerformance(officerId) {

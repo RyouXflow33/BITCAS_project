@@ -6,7 +6,7 @@ if (!in_array($page, $allowed, true)) $page = 'command';
 $titleMap = [
     'command' => 'Traffic Map',
     'analytics' => 'Traffic Analytics',
-    'incidents' => 'Congested Reports',
+    'incidents' => 'Congestion Reports',
     'dispatch' => 'Dispatch'
 ];
 $pageTitle = $titleMap[$page];
@@ -22,6 +22,7 @@ function navClass(string $current, string $item): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BITCAS | <?= htmlspecialchars($pageTitle) ?></title>
     <meta name="description" content="BITCAS intelligent transport and emergency command interface">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="assets/css/style.css?v=<?= filemtime(__DIR__ . '/assets/css/style.css') ?>">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>

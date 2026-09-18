@@ -14,16 +14,17 @@ function renderDispatchKpis() {
     const target = document.getElementById('dispatchKpis');
     if (!target) return;
 
-    const open = state.reports.filter((report) => report.status !== 'Resolved');
     const active = state.assignments.filter((item) => item.status !== 'Resolved');
     const available = state.officers.filter((officer) => officer.status === 'Available').length;
     const breaches = active.filter((assignment) => {
         const report = findReport(assignment.reportId);
         return assignmentSla(assignment, report).breached;
     }).length;
+    const unassigned = getOpenCameraReports().filter((report) => report.status === 'Open').length;
+    const cameraOpen = getOpenCameraReports().length;
 
     target.innerHTML = `
-        <div class="stat-card"><div class="stat-icon yellow">!</div><div><span>Open reports</span><strong>${open.length}</strong><em>Need a unit</em></div></div>
+        <div class="stat-card"><div class="stat-icon yellow">!</div><div><span>Unassigned</span><strong>${unassigned}</strong><em>${cameraOpen} from camera</em></div></div>
         <div class="stat-card"><div class="stat-icon violet">⇄</div><div><span>Active assignments</span><strong>${active.length}</strong><em>In the field</em></div></div>
         <div class="stat-card"><div class="stat-icon green">OK</div><div><span>Officers available</span><strong>${available}</strong><em>of ${state.officers.length} on roster</em></div></div>
         <div class="stat-card"><div class="stat-icon ${breaches ? 'red' : 'blue'}">SLA</div><div><span>SLA breaches</span><strong>${breaches}</strong><em>${breaches ? 'Over target response time' : 'All within target'}</em></div></div>
@@ -35,17 +36,19 @@ function renderDispatchQueue() {
     const count = document.getElementById('dispatchOpenCount');
     if (!target || !count) return;
 
-    const openReports = state.reports
-        .filter((report) => report.status !== 'Resolved')
+    const openReports = getOpenCameraReports()
         .sort((a, b) => {
+            const openRank = (report) => (report.status === 'Open' ? 1 : 0);
             const rank = { Severe: 4, High: 3, Moderate: 2, Low: 1 };
-            return (rank[b.severity] || 0) - (rank[a.severity] || 0) || b.congestionScore - a.congestionScore;
+            return openRank(b) - openRank(a)
+                || (rank[b.severity] || 0) - (rank[a.severity] || 0)
+                || b.congestionScore - a.congestionScore;
         });
 
     count.textContent = `${openReports.length} open`;
 
     if (!openReports.length) {
-        target.innerHTML = '<div class="dispatch-card">No open reports.</div>';
+        target.innerHTML = '<div class="dispatch-card">No camera reports yet. Run traffic_vision.py — a report appears after HEAVY or CRITICAL holds for 3 intervals.</div>';
         return;
     }
 
@@ -60,7 +63,7 @@ function renderDispatchQueue() {
                 <div class="priority ${priorityClass(report.severity)}">${priorityLabel(report.severity)}</div>
                 <div class="dispatch-main">
                     <strong>${report.id} · ${report.location}</strong>
-                    <span>${report.vehicleCount} veh · ${report.congestionScore}% · ${report.severity}</span>
+                    <span>Camera · ${report.vehicleCount} veh · ${report.congestionScore}%</span>
                     <div class="dispatch-meta">
                         <span class="tag ${statusTagClass(report.status)}">${report.status}</span>
                         <span class="${sla && sla.breached ? 'sla-breach' : 'sla-ok'}">${slaText}</span>
@@ -80,23 +83,28 @@ function renderSelectedDispatchReport() {
     const report = selectedDispatchReportId ? findReport(selectedDispatchReportId) : null;
     if (!report) {
         selection.textContent = 'No report selected';
-        target.innerHTML = '<p class="panel-note">Select an open report. The pool below ranks officers for that location — the dispatcher still confirms.</p>';
+        target.innerHTML = '<p class="panel-note">Camera reports land here after you run traffic_vision.py. Create officers on the roster, then assign a unit.</p>';
         return;
     }
 
     const assignment = getActiveAssignmentForReport(report.id);
     const officer = assignment ? state.officers.find((item) => item.id === assignment.officerId) : null;
     selection.textContent = report.id;
+    const evidence = report.snapshotUrl
+        ? `<img src="${report.snapshotUrl}" alt="Evidence for ${report.id}">`
+        : '<div class="report-evidence-empty">Camera case — snapshot lands here after 3 HEAVY intervals.</div>';
     target.innerHTML = `
         <div class="selected-report">
+            <div class="dispatch-evidence">${evidence}</div>
             <div>
                 <strong>${report.id}</strong>
                 <span>${report.location}</span>
             </div>
             <div class="selected-report-meta">
                 <span class="tag ${severityTagClass(report.severity)}">${priorityLabel(report.severity)} ${report.severity}</span>
-                <span>${report.vehicleCount} vehicles · ${report.congestionScore}%</span>
+                <span>Pi camera · ${report.vehicleCount} veh · ${report.congestionScore}%</span>
                 <span>${officer ? `Assigned: ${officer.id} ${officer.name}` : 'Unassigned'}</span>
+                <a class="btn tiny ghost" href="?page=incidents&report=${encodeURIComponent(report.id)}">Open case file</a>
             </div>
         </div>
     `;
@@ -112,6 +120,11 @@ function renderOfficerPool() {
 
     if (!report) {
         target.innerHTML = '';
+        return;
+    }
+
+    if (!state.officers.length) {
+        target.innerHTML = '<p class="panel-note">No officers yet. Open Officer roster, create a profile, then assign from this board.</p>';
         return;
     }
 
@@ -184,6 +197,11 @@ function renderOfficerRoster() {
     if (!target || !meta) return;
 
     meta.textContent = `${state.officers.length} officers`;
+    if (!state.officers.length) {
+        target.innerHTML = '<div class="dispatch-card">No officers yet. Create a profile above.</div>';
+        return;
+    }
+
     target.innerHTML = state.officers.map((officer) => {
         const perf = officerPerformance(officer.id);
         const onShift = isOfficerOnShift(officer);
@@ -213,7 +231,7 @@ function renderOfficerProfile() {
     const officer = state.officers.find((item) => item.id === selectedOfficerId);
     if (!officer) {
         label.textContent = 'No selection';
-        target.innerHTML = '<p class="panel-note">Select an officer to see shift, contact, and clearance times.</p>';
+        target.innerHTML = '<p class="panel-note">Create an officer on the left, then select them to see shift, contact, and clearance times.</p>';
         return;
     }
 

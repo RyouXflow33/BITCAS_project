@@ -3,7 +3,7 @@
 function renderGlobalCounters() {
     const navCount = document.getElementById('reportNavCount');
     if (!navCount || !state) return;
-    const openCount = state.reports.filter((report) => report.status !== 'Resolved').length;
+    const openCount = getOpenCameraReports().length;
     navCount.textContent = String(openCount);
 }
 

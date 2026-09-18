@@ -1,74 +1,69 @@
 <section class="page-head">
     <div>
-        <span class="section-kicker">Congested Reports</span>
+        <span class="section-kicker">Camera evidence inbox</span>
     </div>
     <div class="head-actions">
         <input class="search-input" id="reportSearchInput" type="search" placeholder="Search ID or location">
         <select class="filter-select" id="reportStatusFilter" aria-label="Filter by status">
             <option value="all">All statuses</option>
-            <option value="Open">Open</option>
+            <option value="Open">Unassigned</option>
             <option value="Assigned">Assigned</option>
             <option value="Resolved">Resolved</option>
         </select>
-        <button class="btn primary" id="newReportBtn">Create report</button>
     </div>
 </section>
 
 <div class="split-layout report-layout">
     <section class="panel detail-panel">
-        <div class="panel-head"><div><h2>Report list</h2><span id="reportsMeta">0 reports</span></div></div>
+        <div class="panel-head"><div><h2>Queue</h2><span id="reportsMeta">0 reports</span></div></div>
         <div class="report-stats" id="reportStats"></div>
         <div id="reportCards" class="report-cards"></div>
     </section>
 
-    <section class="panel detail-panel">
-        <div class="panel-head"><div><h2>Edit report</h2><span>localStorage</span></div><span class="tag info" id="editReportId">No selection</span></div>
-        <div class="report-meta-strip">
-            <div><span>Created</span><strong id="metaCreated">--</strong></div>
-            <div><span>Updated</span><strong id="metaUpdated">--</strong></div>
-            <div><span>Source</span><strong id="metaSource">--</strong></div>
-            <div><span>Officer</span><strong id="metaOfficer">--</strong></div>
+    <section class="panel detail-panel case-panel">
+        <div class="panel-head">
+            <div><h2>Case file</h2><span>Pi snapshot + measurements stay read-only</span></div>
+            <span class="tag info" id="editReportId">No selection</span>
         </div>
-        <form class="form-grid report-editor" id="reportEditorForm">
-            <div>
-                <label for="editLocation">Location</label>
-                <input id="editLocation" type="text" required>
+        <div class="case-body" id="reportCase"></div>
+        <form class="form-grid report-editor case-editor" id="reportEditorForm">
+            <div class="full-width" id="manualFields">
+                <div class="form-grid">
+                    <div>
+                        <label for="editLocation">Location</label>
+                        <input id="editLocation" type="text" required>
+                    </div>
+                    <div>
+                        <label for="editVehicles">Vehicle count</label>
+                        <input id="editVehicles" type="number" min="0" required>
+                    </div>
+                    <div>
+                        <label for="editSeverity">Congestion class</label>
+                        <select id="editSeverity" required>
+                            <option value="Low">Low</option>
+                            <option value="Moderate">Moderate</option>
+                            <option value="High">High</option>
+                            <option value="Severe">Severe</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="editStatus">Status</label>
+                        <select id="editStatus" required>
+                            <option value="Open">Open</option>
+                            <option value="Assigned">Assigned</option>
+                            <option value="Resolved">Resolved</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div>
-                <label for="editVehicles">Vehicle count</label>
-                <input id="editVehicles" type="number" min="0" required>
-            </div>
-            <div>
-                <label for="editSeverity">Congestion class</label>
-                <select id="editSeverity" required>
-                    <option value="Low">Low</option>
-                    <option value="Moderate">Moderate</option>
-                    <option value="High">High</option>
-                    <option value="Severe">Severe</option>
-                </select>
-            </div>
-            <div>
-                <label for="editStatus">Status</label>
-                <select id="editStatus" required>
-                    <option value="Open">Open</option>
-                    <option value="Assigned">Assigned</option>
-                    <option value="Resolved">Resolved</option>
-                </select>
-            </div>
+            <input type="hidden" id="editContext">
             <div class="full-width">
-                <label for="editContext">Report context <span class="tag-mini">AUTO-GENERATED</span></label>
-                <textarea id="editContext" class="system-log" rows="4" readonly></textarea>
-            </div>
-            <div class="full-width">
-                <label>Detection evidence</label>
-                <div class="report-evidence" id="reportEvidence"></div>
-            </div>
-            <div class="full-width">
-                <label for="editNotes">LGU remarks</label>
-                <textarea id="editNotes" rows="3" placeholder="Notes"></textarea>
+                <label for="editNotes">Desk remarks</label>
+                <textarea id="editNotes" rows="3" placeholder="What the traffic desk observed or instructed"></textarea>
             </div>
             <div class="editor-actions">
-                <button type="submit" class="btn primary">Save report</button>
+                <a class="btn primary" id="assignOfficerLink" href="?page=dispatch">Assign officer</a>
+                <button type="submit" class="btn ghost">Save remarks</button>
                 <button type="button" class="btn ghost" id="markResolvedBtn">Mark resolved</button>
                 <button type="button" class="btn ghost" id="markFalsePositiveBtn">Not congestion</button>
             </div>

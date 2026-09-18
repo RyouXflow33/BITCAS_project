@@ -202,7 +202,7 @@ function renderMapLayers() {
         }).bindPopup(`Detection ${index + 1}<br>${trafficLevel} traffic`).addTo(groups.detections);
     });
 
-    const openReports = state.reports.filter((report) => report.status !== 'Resolved');
+    const openReports = getOpenCameraReports();
     openReports.forEach((report) => {
         const marker = L.circleMarker([report.lat, report.lng], {
             radius: 8,

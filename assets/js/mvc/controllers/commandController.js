@@ -7,15 +7,6 @@ function initCommandPage() {
     bindLayerChips();
     bindCommandActions();
     renderCommandPage();
-    refreshVisionFeed();
-
-    if (!window.__bitcasVisionPoller) {
-        window.__bitcasVisionPoller = setInterval(() => {
-            refreshVisionFeed();
-            renderCommandPage();
-            renderGlobalCounters();
-        }, VISION_POLL_MS);
-    }
 }
 
 function bindLayerChips() {
