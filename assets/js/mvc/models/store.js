@@ -287,7 +287,9 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
 }
 
 function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
-    if ((payload.source || '') === 'bitcas_simulation') return;
+    // Only the live vision node may open a case. Simulate-button ticks
+    // (`bitcas_simulation`) and make_sample_data.py (`sample_generator`) must not.
+    if ((payload.source || '') !== 'traffic_vision_system') return;
     const isHeavy = normalizeVisionLevel(payload.congestion_level) === 'HEAVY';
     if (!payload.snapshot_url || !isHeavy) return;
     if (state.reports.some((report) => report.snapshotUrl === payload.snapshot_url)) return;

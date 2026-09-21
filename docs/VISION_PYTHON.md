@@ -151,7 +151,7 @@ Built in `_build_payload()`. Schema **2**. `source` is `traffic_vision_system`.
 
 v1 aliases (`vehicle_count`, `color`, `label`) stay on the payload so an older UI would still parse it.
 
-**Reports rule (browser, not Python):** `maybeCreateEvidenceReport()` creates a case only if the payload is HEAVY **and** has `snapshot_url`, and it is not a `bitcas_simulation` sample. Older files that still say CRITICAL are treated as HEAVY.
+**Reports rule (browser, not Python):** `maybeCreateEvidenceReport()` creates a case only if `source` is `traffic_vision_system`, the level is HEAVY, and `snapshot_url` is set. Simulate-button (`bitcas_simulation`) and `make_sample_data.py` (`sample_generator`) cannot open a case. Older files that still say CRITICAL are treated as HEAVY.
 
 ---
 

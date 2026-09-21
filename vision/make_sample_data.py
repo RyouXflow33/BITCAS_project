@@ -68,6 +68,19 @@ def split_by_class(total):
     return {name: count for name, count in counts.items() if count > 0}
 
 
+def sample_positions(vehicle_types):
+    """Same {x, y, class} objects the live node publishes for map dots."""
+    positions = []
+    for class_name, count in vehicle_types.items():
+        for _ in range(count):
+            positions.append({
+                'x': round(random.uniform(0.12, 0.88), 4),
+                'y': round(random.uniform(0.08, 0.92), 4),
+                'class': class_name
+            })
+    return positions
+
+
 def sample_minute(moment):
     """One minute of plausible traffic, with the congestion model applied."""
     hour = moment.hour
@@ -159,7 +172,8 @@ def build_current(end, today_total, today_by_direction, incidents=()):
     if any(window_start <= end < window_end for window_start, window_end in incidents):
         minute = apply_incident(minute)
     level = minute['level']
-    positions = sorted(round(random.random(), 4) for _ in range(minute['in_frame']))
+    types = split_by_class(minute['in_frame'])
+    positions = sample_positions(types)
     return {
         'schema': 2,
         'camera_id': CAMERA_ID,
@@ -196,7 +210,7 @@ def build_current(end, today_total, today_by_direction, incidents=()):
         'detections_count': minute['in_frame'],
         # Marks the payload as generated, so the dashboard shows SIMULATED.
         'source': SOURCE_TAG,
-        'vehicle_types': split_by_class(minute['in_frame']),
+        'vehicle_types': types,
         'positions': positions,
         'avg_speed': minute['speed_kph']
     }
