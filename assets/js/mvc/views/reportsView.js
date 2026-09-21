@@ -25,7 +25,7 @@ function renderReportsPage() {
     meta.textContent = `${reports.length} of ${state.reports.length}`;
 
     if (!reports.length) {
-        cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py on the video. A case appears after HEAVY or CRITICAL holds for 3 intervals and a snapshot is written.');
+        cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py on the video. A case appears after HEAVY holds for 3 intervals and a snapshot is written.');
         selectedReportId = null;
         resetEditor();
         return;
@@ -67,7 +67,7 @@ function fillReportEditor(reportId) {
     setText('editReportId', report.id);
     setValue('editLocation', report.location);
     setValue('editVehicles', String(report.vehicleCount));
-    setValue('editSeverity', report.severity);
+    setValue('editSeverity', report.severity === 'Severe' ? 'High' : report.severity);
     setValue('editStatus', report.status);
     setValue('editContext', report.context || '');
     setValue('editNotes', report.notes || '');
@@ -114,7 +114,7 @@ function fillReportEditor(reportId) {
 
 function renderEvidenceHtml(report) {
     if (report.snapshotUrl) {
-        return `<img src="${report.snapshotUrl}" alt="Traffic evidence for ${report.id}"><small>Pi snapshot after 3 HEAVY/CRITICAL publish intervals</small>`;
+        return `<img src="${report.snapshotUrl}" alt="Traffic evidence for ${report.id}"><small>Pi snapshot after 3 HEAVY publish intervals</small>`;
     }
     return '<div class="report-evidence-empty">Camera report — snapshot appears here when traffic_vision.py writes assets/snapshots and congestion.json includes snapshot_url.</div>';
 }
@@ -131,7 +131,7 @@ function resetEditor() {
     if (manualFields) manualFields.hidden = true;
     const caseBody = document.getElementById('reportCase');
     if (caseBody) {
-        caseBody.innerHTML = emptyState('file', 'No camera case yet', 'Run traffic_vision.py; HEAVY or CRITICAL for 3 intervals creates the report and snapshot here.');
+        caseBody.innerHTML = emptyState('file', 'No camera case yet', 'Run traffic_vision.py; HEAVY for 3 intervals creates the report and snapshot here.');
     }
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = true;

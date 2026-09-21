@@ -1,77 +1,74 @@
 {
   "schema": 2,
-  "camera_id": "CAM-SAMPLE-01",
-  "site_name": "Villamonte Street Intersection (SAMPLE DATA)",
-  "timestamp": "2026-09-18T10:34:00",
-  "congestion_level": "CRITICAL",
-  "congestion_score": 87,
-  "vehicles_in_frame": 20,
-  "smoothed_vehicle_count": 20,
-  "occupancy_pct": 79.5,
-  "avg_speed_kph": 2.9,
-  "speed_calibrated": true,
+  "camera_id": "CAM-VILLAMONTE-01",
+  "site_name": "Villamonte Street Intersection",
+  "timestamp": "2026-09-20T17:12:40",
+  "lat": 10.6642688,
+  "lng": 122.9675934,
+  "congestion_level": "LIGHT",
+  "congestion_score": 21,
+  "vehicles_in_frame": 4,
+  "smoothed_vehicle_count": 3.25,
+  "occupancy_pct": 1.1,
+  "motion": "flowing",
+  "avg_speed_kph": null,
+  "speed_calibrated": false,
   "flow": {
     "window_seconds": 3.0,
-    "per_minute": 1.0,
-    "inbound": 0,
-    "outbound": 1
+    "per_minute": 0.0
   },
   "totals": {
-    "date": "2026-09-18",
-    "today": 8656,
+    "date": "2026-09-20",
+    "today": 287,
     "by_class": {
-      "car": 4014,
-      "motorcycle": 3854,
-      "truck": 725,
-      "bus": 63
+      "car": 259,
+      "truck": 11,
+      "bus": 17
     },
     "by_direction": {
-      "inbound": 4334,
-      "outbound": 4322
+      "inbound": 287
     }
   },
   "crossings": [],
   "health": {
-    "fps": 6.4,
-    "backend": "sample_generator",
+    "fps": 21.6,
+    "backend": "pytorch",
     "detect_every": 1,
-    "cpu_temp_c": 54.2,
-    "uptime_s": 3600,
-    "roi_calibrated": true,
-    "lines_calibrated": true
+    "cpu_temp_c": null,
+    "uptime_s": 437,
+    "roi_calibrated": false,
+    "lines_calibrated": false
   },
-  "color": "#8b1a1a",
-  "label": "CRITICAL",
-  "vehicle_count": 20,
-  "detections_count": 20,
-  "source": "sample_generator",
+  "color": "#27ae60",
+  "label": "LIGHT",
+  "vehicle_count": 4,
+  "detections_count": 4,
+  "source": "traffic_vision_system",
   "vehicle_types": {
-    "car": 8,
-    "motorcycle": 9,
-    "truck": 2,
-    "bus": 1
+    "car": 4
   },
   "positions": [
-    0.023,
-    0.1216,
-    0.1376,
-    0.1737,
-    0.2292,
-    0.25,
-    0.3423,
-    0.3874,
-    0.4585,
-    0.4718,
-    0.6864,
-    0.7671,
-    0.7677,
-    0.7693,
-    0.798,
-    0.87,
-    0.8755,
-    0.9056,
-    0.9456,
-    0.9841
+    {
+      "x": 0.2723,
+      "y": 0.2799,
+      "class": "car"
+    },
+    {
+      "x": 0.332,
+      "y": 0.1333,
+      "class": "car"
+    },
+    {
+      "x": 0.2387,
+      "y": 0.1618,
+      "class": "car"
+    },
+    {
+      "x": 0.323,
+      "y": 0.3528,
+      "class": "car"
+    }
   ],
-  "avg_speed": 2.9
+  "avg_speed": 31.0,
+  "avg_position": 0.2915
 }

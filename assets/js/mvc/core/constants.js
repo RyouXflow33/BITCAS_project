@@ -36,7 +36,27 @@ const VISION_LEVELS = {
     LIGHT: { fallbackScore: 20, color: '#27ae60', caption: 'Normal', severity: 'Low' },
     MODERATE: { fallbackScore: 50, color: '#f39c12', caption: 'Monitor', severity: 'Moderate' },
     HEAVY: { fallbackScore: 75, color: '#e74c3c', caption: 'Heavy queue', severity: 'High' },
-    CRITICAL: { fallbackScore: 92, color: '#8b1a1a', caption: 'Dispatch now', severity: 'Severe' }
+    // Older payloads used CRITICAL for score >= 85. The live UI folds that
+    // into HEAVY; this entry exists so those files still parse.
+    CRITICAL: { fallbackScore: 75, color: '#e74c3c', caption: 'Heavy queue', severity: 'High' }
+};
+const CAMERA_SITE = { lat: 10.6642688, lng: 122.9675934 };
+const MAP_BASEMAPS = {
+    osm: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+    },
+    satellite: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19
+    },
+    light: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 16
+    }
 };
 const VILLAMONTE_TRAFFIC_ROAD = {
     type: 'FeatureCollection',
@@ -46,9 +66,8 @@ const VILLAMONTE_TRAFFIC_ROAD = {
         geometry: {
             type: 'LineString',
             coordinates: [
-                [122.9585203, 10.6681712], [122.9597650, 10.6676309], [122.9614676, 10.6668880],
-                [122.9632707, 10.6661152], [122.9654193, 10.6651956], [122.9676478, 10.6642276],
-                [122.9698366, 10.6632997], [122.9712756, 10.6626900]
+                [122.9675934, 10.6642688], [122.9668395, 10.6645762], [122.9661113, 10.6648988],
+                [122.9652753, 10.6652617], [122.9646445, 10.6655439]
             ]
         }
     }]
@@ -61,7 +80,12 @@ const VISION_SIMULATION_SAMPLES = [
         congestion_level: 'LIGHT', congestion_score: 22, color: '#27ae60', label: 'LIGHT',
         vehicles_in_frame: 3, vehicle_count: 3, occupancy_pct: 9.4,
         avg_speed_kph: 38.6, speed_calibrated: true,
-        vehicle_types: { car: 2, motorcycle: 1 }, positions: [0.18, 0.47, 0.72],
+        vehicle_types: { car: 2, motorcycle: 1 },
+        positions: [
+            { x: 0.32, y: 0.78, class: 'car' },
+            { x: 0.58, y: 0.61, class: 'car' },
+            { x: 0.44, y: 0.42, class: 'motorcycle' }
+        ],
         flow: { window_seconds: 3, per_minute: 20.0, inbound: 1 },
         totals: { today: 412, by_direction: { inbound: 221, outbound: 191 } }
     },
@@ -70,7 +94,12 @@ const VISION_SIMULATION_SAMPLES = [
         vehicles_in_frame: 8, vehicle_count: 8, occupancy_pct: 31.7,
         avg_speed_kph: 21.3, speed_calibrated: true,
         vehicle_types: { car: 6, bus: 1, motorcycle: 1 },
-        positions: [0.08, 0.2, 0.34, 0.49, 0.58, 0.67, 0.81, 0.93],
+        positions: [
+            { x: 0.22, y: 0.86, class: 'car' }, { x: 0.41, y: 0.74, class: 'car' },
+            { x: 0.63, y: 0.69, class: 'bus' }, { x: 0.35, y: 0.58, class: 'car' },
+            { x: 0.71, y: 0.51, class: 'motorcycle' }, { x: 0.48, y: 0.39, class: 'car' },
+            { x: 0.28, y: 0.28, class: 'car' }, { x: 0.55, y: 0.18, class: 'car' }
+        ],
         flow: { window_seconds: 3, per_minute: 40.0, inbound: 1, outbound: 1 },
         totals: { today: 486, by_direction: { inbound: 259, outbound: 227 } }
     },
@@ -79,16 +108,39 @@ const VISION_SIMULATION_SAMPLES = [
         vehicles_in_frame: 17, vehicle_count: 17, occupancy_pct: 58.2,
         avg_speed_kph: 9.4, speed_calibrated: true,
         vehicle_types: { car: 12, bus: 2, truck: 1, motorcycle: 2 },
-        positions: [0.04, 0.1, 0.16, 0.23, 0.3, 0.37, 0.44, 0.5, 0.56, 0.61, 0.67, 0.73, 0.79, 0.84, 0.89, 0.94, 0.98],
+        positions: [
+            { x: 0.18, y: 0.91, class: 'car' }, { x: 0.46, y: 0.84, class: 'car' },
+            { x: 0.72, y: 0.79, class: 'truck' }, { x: 0.33, y: 0.72, class: 'car' },
+            { x: 0.58, y: 0.66, class: 'motorcycle' }, { x: 0.41, y: 0.59, class: 'car' },
+            { x: 0.67, y: 0.53, class: 'bus' }, { x: 0.24, y: 0.47, class: 'car' },
+            { x: 0.51, y: 0.41, class: 'car' }, { x: 0.76, y: 0.36, class: 'car' },
+            { x: 0.38, y: 0.31, class: 'motorcycle' }, { x: 0.62, y: 0.26, class: 'car' },
+            { x: 0.29, y: 0.21, class: 'car' }, { x: 0.54, y: 0.16, class: 'bus' },
+            { x: 0.71, y: 0.12, class: 'car' }, { x: 0.43, y: 0.08, class: 'car' },
+            { x: 0.60, y: 0.05, class: 'car' }
+        ],
         flow: { window_seconds: 3, per_minute: 20.0, inbound: 1 },
         totals: { today: 531, by_direction: { inbound: 284, outbound: 247 } }
     },
     {
-        congestion_level: 'CRITICAL', congestion_score: 93, color: '#8b1a1a', label: 'CRITICAL',
+        congestion_level: 'HEAVY', congestion_score: 93, color: '#e74c3c', label: 'HEAVY',
         vehicles_in_frame: 24, vehicle_count: 24, occupancy_pct: 74.8,
         avg_speed_kph: 3.1, speed_calibrated: true,
         vehicle_types: { car: 17, bus: 2, truck: 2, motorcycle: 3 },
-        positions: [0.02, 0.06, 0.1, 0.14, 0.19, 0.23, 0.28, 0.32, 0.37, 0.41, 0.46, 0.5, 0.55, 0.59, 0.64, 0.68, 0.73, 0.77, 0.82, 0.86, 0.9, 0.93, 0.96, 0.99],
+        positions: [
+            { x: 0.16, y: 0.94, class: 'car' }, { x: 0.38, y: 0.89, class: 'car' },
+            { x: 0.61, y: 0.85, class: 'truck' }, { x: 0.27, y: 0.80, class: 'motorcycle' },
+            { x: 0.52, y: 0.76, class: 'car' }, { x: 0.74, y: 0.71, class: 'car' },
+            { x: 0.33, y: 0.67, class: 'bus' }, { x: 0.58, y: 0.62, class: 'car' },
+            { x: 0.21, y: 0.58, class: 'car' }, { x: 0.46, y: 0.53, class: 'motorcycle' },
+            { x: 0.69, y: 0.49, class: 'car' }, { x: 0.41, y: 0.44, class: 'car' },
+            { x: 0.63, y: 0.40, class: 'truck' }, { x: 0.29, y: 0.35, class: 'car' },
+            { x: 0.54, y: 0.31, class: 'bus' }, { x: 0.76, y: 0.27, class: 'car' },
+            { x: 0.36, y: 0.23, class: 'car' }, { x: 0.59, y: 0.19, class: 'motorcycle' },
+            { x: 0.44, y: 0.15, class: 'car' }, { x: 0.67, y: 0.12, class: 'car' },
+            { x: 0.31, y: 0.09, class: 'car' }, { x: 0.51, y: 0.06, class: 'car' },
+            { x: 0.72, y: 0.04, class: 'car' }, { x: 0.48, y: 0.02, class: 'car' }
+        ],
         flow: { window_seconds: 3, per_minute: 0.0 },
         totals: { today: 548, by_direction: { inbound: 292, outbound: 256 } }
     }

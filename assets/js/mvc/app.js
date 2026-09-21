@@ -35,6 +35,14 @@ function startGlobalVisionPoller() {
         if (page === 'command') renderCommandPage();
         if (page === 'incidents') renderReportsPage();
         if (page === 'dispatch') renderDispatchPage();
+        if (page === 'analytics') {
+            const now = Date.now();
+            if (!window.__bitcasHistoryRefreshAt || now - window.__bitcasHistoryRefreshAt > 15000) {
+                window.__bitcasHistoryRefreshAt = now;
+                await Promise.all([refreshVisionHistory(), refreshVisionHourly()]);
+            }
+            renderAnalyticsPage();
+        }
     };
 
     tick();

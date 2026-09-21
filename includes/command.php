@@ -20,11 +20,20 @@
 <div class="command-grid traffic-map-grid">
     <section class="panel map-panel">
         <div class="panel-head">
-            <div><h2><?= icon('map-pin') ?> Villamonte Street</h2><span class="live-text"><i></i> OSM layers</span></div>
+            <div><h2><?= icon('map-pin') ?> Villamonte Street</h2><span class="live-text"><i></i> Map layers</span></div>
             <div class="panel-tools">
+                <label class="map-type" for="mapTypeSelect">
+                    <span>Map type</span>
+                    <select id="mapTypeSelect" aria-label="Map type">
+                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="satellite">Satellite</option>
+                        <option value="light">Light streets</option>
+                    </select>
+                </label>
                 <button class="chip active layer-chip" data-layer="road">Traffic layer</button>
-                <button class="chip active layer-chip" data-layer="detections">Vehicle points</button>
+                <button class="chip active layer-chip" data-layer="detections" title="In-frame detections on ~120 m of road around the camera, not GPS">Vehicle points</button>
                 <button class="chip active layer-chip" data-layer="camera">Camera Point</button>
+                <button class="chip" type="button" id="mapFullscreenBtn" aria-pressed="false"><?= icon('maximize') ?><span>Full screen</span></button>
             </div>
         </div>
         <?php include __DIR__ . '/map.php'; ?>
@@ -58,7 +67,6 @@
                     <option value="Low">Low</option>
                     <option value="Moderate">Moderate</option>
                     <option value="High">High</option>
-                    <option value="Severe">Severe</option>
                 </select>
             </div>
             <div>

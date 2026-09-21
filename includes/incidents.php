@@ -43,7 +43,6 @@
                             <option value="Low">Low</option>
                             <option value="Moderate">Moderate</option>
                             <option value="High">High</option>
-                            <option value="Severe">Severe</option>
                         </select>
                     </div>
                     <div>

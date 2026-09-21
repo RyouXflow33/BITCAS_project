@@ -30,6 +30,7 @@ function buildDefaultState() {
             lastSyncIso: nowIso
         },
         telemetry: [],
+        liveTelemetry: [],
         reports: [],
         snapshots: [],
         advisories: [],
@@ -41,6 +42,7 @@ function buildDefaultState() {
 function ensureStateShape(s) {
     if (!s.reports) s.reports = [];
     if (!s.telemetry) s.telemetry = [];
+    if (!s.liveTelemetry) s.liveTelemetry = [];
     if (!s.advisories) s.advisories = [];
     if (!s.snapshots) s.snapshots = [];
     if (!s.officers) s.officers = [];
@@ -175,6 +177,7 @@ async function fetchJsonl(url) {
 // than in the persisted state object -- no reason to spend localStorage on
 // something re-fetched on every page load.
 let visionHourly = [];
+let visionHistory = [];
 
 async function refreshVisionHourly() {
     const records = await fetchJsonl(VISION_HOURLY_URL);
@@ -187,6 +190,17 @@ async function refreshVisionHourly() {
 
 function getVisionHourly() {
     return visionHourly;
+}
+
+function setVisionHistory(records) {
+    visionHistory = Array.isArray(records) ? records : [];
+    return visionHistory;
+}
+
+function getVisionHistoryRecords() {
+    if (visionHistory.length) return visionHistory;
+    if (state.liveTelemetry && state.liveTelemetry.length) return state.liveTelemetry;
+    return state.telemetry || [];
 }
 
 function normalizeHourlyEntry(record) {
@@ -234,13 +248,13 @@ function applyVisionPayload(payload, source) {
     state.live.currentVehicleCount = nextVehicleCount;
     state.live.congestionScore = nextScore;
     state.live.lastSyncIso = nowIso;
-    state.live.visionLevel = payload.congestion_level;
+    state.live.visionLevel = normalizeVisionLevel(payload.congestion_level);
     state.live.visionPayload = { ...payload, source: payload.source || source };
 
-    const latest = state.telemetry[state.telemetry.length - 1];
+    const latest = state.liveTelemetry[state.liveTelemetry.length - 1];
     if (!latest || latest.sourceTimestamp !== payload.timestamp) {
-        state.telemetry.push(buildTelemetryEntry(payload, nowIso, nextVehicleCount, nextScore));
-        state.telemetry = state.telemetry.slice(-240);
+        state.liveTelemetry.push(buildTelemetryEntry(payload, nowIso, nextVehicleCount, nextScore));
+        state.liveTelemetry = state.liveTelemetry.slice(-240);
         maybeCreateEvidenceReport({ ...payload, source: payload.source || source }, nextVehicleCount, nextScore, nowIso);
     }
 
@@ -258,7 +272,7 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
         sourceTimestamp: payload.timestamp,
         vehicleCount,
         congestionScore: score,
-        visionLevel: payload.congestion_level,
+        visionLevel: normalizeVisionLevel(payload.congestion_level),
         vehicleTypes: payload.vehicle_types || {},
         occupancyPct: Number.isFinite(occupancy) ? occupancy : null,
         avgSpeedKph: payload.speed_calibrated && Number.isFinite(speedKph) ? speedKph : null,
@@ -274,24 +288,24 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
 
 function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
     if ((payload.source || '') === 'bitcas_simulation') return;
-    const isSevere = payload.congestion_level === 'HEAVY' || payload.congestion_level === 'CRITICAL';
-    if (!payload.snapshot_url || !isSevere) return;
+    const isHeavy = normalizeVisionLevel(payload.congestion_level) === 'HEAVY';
+    if (!payload.snapshot_url || !isHeavy) return;
     if (state.reports.some((report) => report.snapshotUrl === payload.snapshot_url)) return;
 
     state.reports.unshift({
         id: `RPT-${state.nextReportNumber}`,
         location: payload.site_name || 'Villamonte Street Intersection',
         cameraId: payload.camera_id || null,
-        severity: visionLevelToSeverity(payload.congestion_level),
+        severity: visionLevelToSeverity(normalizeVisionLevel(payload.congestion_level)),
         congestionScore: score,
         vehicleCount,
         occupancyPct: Number.isFinite(Number(payload.occupancy_pct)) ? Number(payload.occupancy_pct) : null,
         avgSpeedKph: payload.speed_calibrated ? Number(payload.avg_speed_kph) : null,
         status: 'Open',
-        lat: Number(payload.lat) || 10.6758,
-        lng: Number(payload.lng) || 122.9542,
+        lat: Number(payload.lat) || CAMERA_SITE.lat,
+        lng: Number(payload.lng) || CAMERA_SITE.lng,
         source: 'Vision system',
-        context: `Automatically generated: ${payload.congestion_level} congestion (score ${score}) persisted for three reporting intervals.`,
+        context: `Automatically generated: ${normalizeVisionLevel(payload.congestion_level)} congestion (score ${score}) persisted for three reporting intervals.`,
         notes: '',
         falsePositive: false,
         snapshotUrl: payload.snapshot_url,
@@ -324,7 +338,7 @@ function normalizeVisionHistoryEntry(record) {
         vehicleCount,
         peakVehicleCount: Number(record.vehicles_in_frame_peak) || vehicleCount,
         congestionScore: payloadScore(record),
-        visionLevel: record.congestion_level,
+        visionLevel: normalizeVisionLevel(record.congestion_level),
         vehicleTypes: record.vehicle_types || {},
         occupancyPct: Number.isFinite(occupancy) ? occupancy : null,
         avgSpeedKph: record.speed_calibrated && Number.isFinite(speedKph) ? speedKph : null,

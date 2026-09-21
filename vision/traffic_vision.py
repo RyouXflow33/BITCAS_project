@@ -12,8 +12,8 @@ What changed from v1 and why it matters:
     adds counting lines, so `totals.today` is a real vehicle count and
     `flow.per_minute` is real throughput.
   * Congestion was one of three fixed scores (30/60/90). v2 computes a
-    continuous 0-100 score from occupancy, load and slowness, with a fourth
-    CRITICAL band.
+    continuous 0-100 score from occupancy, load and slowness (pixel speed
+    when km/h is not calibrated), labelled LIGHT / MODERATE / HEAVY.
   * Speed was pixels/second, which depends on how far the car is from the lens.
     v2 applies a ground-plane homography (see calibrate.py) and reports km/h.
   * History was a 650 KB JSON file re-read and rewritten every 3 seconds --
@@ -80,11 +80,14 @@ CONFIG_DEFAULTS = {
     'lanes': [],
     'calibration': {'calibrated': False, 'image_points': [], 'world_points': []},
     'congestion': {
-        'capacity_vehicles': 20,
+        'capacity_vehicles': 12,
         'free_flow_kph': 40.0,
         'weights': {'occupancy': 0.45, 'load': 0.30, 'slowness': 0.25},
         'bands': {'moderate': 40, 'heavy': 65, 'critical': 85},
-        'smoothing_window_seconds': 30
+        'smoothing_window_seconds': 12,
+        'busy_occupancy': 0.16,
+        'free_flow_pps': 50.0,
+        'stopped_pps': 8.0
     },
     'tracking': {
         'max_match_distance_px': 60,
@@ -505,12 +508,12 @@ class CentroidTracker:
 
 class CongestionModel:
     """
-    Continuous 0-100 score from three normalised signals.
+    Continuous 0-100 score from occupancy, load and slowness.
 
-    v1 emitted only 30, 60 or 90, so every downstream average and chart was
-    drawn from a three-valued signal. Occupancy carries most of the weight
-    because it is the one measure that stays meaningful regardless of camera
-    angle or distance.
+    Occupancy against a whole uncalibrated frame is a few percent even when the
+    road is busy, so it is scaled by `busy_occupancy` until the ROI is the road.
+    Slowness uses km/h after speed calibration, otherwise pixel speed so a
+    stopped queue still raises the score.
     """
 
     def __init__(self, config):
@@ -525,43 +528,65 @@ class CongestionModel:
         self.heavy = int(bands['heavy'])
         self.critical = int(bands['critical'])
         self.window_seconds = float(config['smoothing_window_seconds'])
+        self.busy_occupancy = max(0.02, float(config.get('busy_occupancy', 0.16)))
+        self.free_flow_pps = max(1.0, float(config.get('free_flow_pps', 50.0)))
+        self.stopped_pps = max(0.5, float(config.get('stopped_pps', 8.0)))
+        self.roi_calibrated = False
         self._samples = deque()
 
     def smooth(self, vehicle_count, now):
-        """
-        Time-based smoothing window.
-
-        v1 used deque(maxlen=30) appended once per frame, so at 25 FPS the
-        "smoothing" covered about one second.
-        """
+        """Time-based smoothing window, not last-N-frames."""
         self._samples.append((now, vehicle_count))
         while self._samples and now - self._samples[0][0] > self.window_seconds:
             self._samples.popleft()
         return sum(sample[1] for sample in self._samples) / len(self._samples)
 
-    def score(self, occupancy_fraction, smoothed_count, avg_speed_kph):
+    def occupancy_term(self, occupancy_fraction):
         occupancy = min(1.0, max(0.0, occupancy_fraction))
-        load = min(1.0, smoothed_count / self.capacity)
-        if avg_speed_kph is None:
-            # Uncalibrated: redistribute the slowness weight onto the signals
-            # we can actually measure rather than inventing a speed.
-            total = self.w_occupancy + self.w_load
-            value = (self.w_occupancy * occupancy + self.w_load * load) / total
-        else:
-            slowness = min(1.0, max(0.0, 1.0 - (avg_speed_kph / self.free_flow_kph)))
-            value = (self.w_occupancy * occupancy + self.w_load * load + self.w_slowness * slowness)
+        if self.roi_calibrated:
+            return occupancy
+        return min(1.0, occupancy / self.busy_occupancy)
 
-        score = int(round(100 * value))
-        return max(0, min(100, score))
+    def slowness_term(self, avg_speed_kph, avg_speed_pps, vehicle_count):
+        """1 = standing still, 0 = free flow. Empty road is not a jam."""
+        if vehicle_count <= 0:
+            return 0.0
+        if avg_speed_kph is not None:
+            slowness = min(1.0, max(0.0, 1.0 - (avg_speed_kph / self.free_flow_kph)))
+        elif avg_speed_pps is None:
+            slowness = 0.0
+        elif avg_speed_pps <= self.stopped_pps:
+            slowness = 1.0
+        else:
+            slowness = min(1.0, max(0.0, 1.0 - (avg_speed_pps / self.free_flow_pps)))
+        # One stopped car is not congestion; a queue of 3+ is.
+        if vehicle_count < 3:
+            slowness *= vehicle_count / 3.0
+        return slowness
+
+    def score(self, occupancy_fraction, smoothed_count, avg_speed_kph,
+              avg_speed_pps=None, vehicle_count=0):
+        occupancy = self.occupancy_term(occupancy_fraction)
+        load = min(1.0, max(0.0, smoothed_count / self.capacity))
+        slowness = self.slowness_term(avg_speed_kph, avg_speed_pps, vehicle_count)
+        value = (self.w_occupancy * occupancy + self.w_load * load + self.w_slowness * slowness)
+        return max(0, min(100, int(round(100 * value))))
 
     def level(self, score):
-        if score >= self.critical:
-            return 'CRITICAL'
         if score >= self.heavy:
             return 'HEAVY'
         if score >= self.moderate:
             return 'MODERATE'
         return 'LIGHT'
+
+    def motion_label(self, slowness, vehicle_count):
+        if vehicle_count <= 0:
+            return 'empty'
+        if slowness >= 0.85:
+            return 'stopped'
+        if slowness >= 0.45:
+            return 'slow'
+        return 'flowing'
 
 
 # --------------------------------------------------------------------------
@@ -761,6 +786,7 @@ class TrafficVisionSystem:
                                for line in self.config['counting_lines']]
         if not self.config['roi'].get('calibrated'):
             print("Note: ROI not calibrated -- using the whole frame. Run calibrate.py for accuracy.")
+        self.congestion.roi_calibrated = bool(self.config['roi'].get('calibrated'))
 
     # -- per-cycle work ----------------------------------------------------
 
@@ -829,18 +855,27 @@ class TrafficVisionSystem:
 
         speeds_kph = [t.speed_kph for t in roi_tracks if t.speed_kph is not None]
         avg_speed_kph = sum(speeds_kph) / len(speeds_kph) if speeds_kph else None
-        speeds_pps = [t.speed_pps for t in roi_tracks if t.speed_pps]
-        avg_speed_pps = sum(speeds_pps) / len(speeds_pps) if speeds_pps else 0.0
+        min_samples = self.tracker.min_speed_samples
+        speeds_pps = [t.speed_pps for t in roi_tracks if len(t.pixel_history) >= min_samples]
+        avg_speed_pps = sum(speeds_pps) / len(speeds_pps) if speeds_pps else None
 
-        score = self.congestion.score(occupancy, smoothed, avg_speed_kph)
+        slowness = self.congestion.slowness_term(avg_speed_kph, avg_speed_pps, vehicles_in_frame)
+        score = self.congestion.score(
+            occupancy, smoothed, avg_speed_kph, avg_speed_pps, vehicles_in_frame)
         level = self.congestion.level(score)
+        motion = self.congestion.motion_label(slowness, vehicles_in_frame)
 
         vehicle_types = defaultdict(int)
         positions = []
-        width = self.frame_size[0]
+        width = max(1, self.frame_size[0])
+        height = max(1, self.frame_size[1])
         for track in roi_tracks:
             vehicle_types[track.class_name] += 1
-            positions.append(round(track.centroid[0] / width, 4))
+            positions.append({
+                'x': round(track.centroid[0] / width, 4),
+                'y': round(track.centroid[1] / height, 4),
+                'class': track.class_name
+            })
 
         window_directions = defaultdict(int)
         for crossing in self.window_crossings:
@@ -853,11 +888,14 @@ class TrafficVisionSystem:
             'camera_id': self.config['camera_id'],
             'site_name': self.config['site_name'],
             'timestamp': datetime.now().isoformat(timespec='seconds'),
+            'lat': self.config.get('lat'),
+            'lng': self.config.get('lng'),
             'congestion_level': level,
             'congestion_score': score,
             'vehicles_in_frame': vehicles_in_frame,
             'smoothed_vehicle_count': round(smoothed, 2),
             'occupancy_pct': round(occupancy * 100, 1),
+            'motion': motion,
             'avg_speed_kph': round(avg_speed_kph, 1) if avg_speed_kph is not None else None,
             'speed_calibrated': self.calibration.enabled,
             'flow': {
@@ -890,11 +928,14 @@ class TrafficVisionSystem:
             'source': 'traffic_vision_system',
             'vehicle_types': dict(vehicle_types),
             'positions': positions,
-            'avg_speed': round(avg_speed_kph, 1) if avg_speed_kph is not None else round(avg_speed_pps, 1)
+            'avg_speed': round(avg_speed_kph, 1) if avg_speed_kph is not None else (
+                round(avg_speed_pps, 1) if avg_speed_pps is not None else 0.0
+            )
         }
 
         if positions:
-            payload['avg_position'] = round(sum(positions) / len(positions), 4)
+            xs = [item['x'] if isinstance(item, dict) else item for item in positions]
+            payload['avg_position'] = round(sum(xs) / len(xs), 4)
 
         return payload
 
@@ -1064,7 +1105,7 @@ class TrafficVisionSystem:
                     payload = self._build_payload(tracks, now)
                     level, score = payload['congestion_level'], payload['congestion_score']
 
-                    if level in ('HEAVY', 'CRITICAL'):
+                    if level == 'HEAVY':
                         self.heavy_streak += 1
                     else:
                         self.heavy_streak = 0
@@ -1095,7 +1136,7 @@ class TrafficVisionSystem:
                           f"{payload['vehicles_in_frame']} in frame | "
                           f"occ {payload['occupancy_pct']}% load "
                           f"{payload['vehicles_in_frame']}/{self.congestion.capacity} | "
-                          f"{self.daily_totals['total']} today | {speed_text}")
+                          f"{payload.get('motion', '--')} | {self.daily_totals['total']} today | {speed_text}")
 
                     self.pending_crossings = []
                     self.window_crossings = []

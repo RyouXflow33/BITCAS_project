@@ -47,8 +47,6 @@ LEVEL_COLORS = {
 
 
 def level_for(score):
-    if score >= BANDS['critical']:
-        return 'CRITICAL'
     if score >= BANDS['heavy']:
         return 'HEAVY'
     if score >= BANDS['moderate']:

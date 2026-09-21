@@ -10,8 +10,8 @@
   "camera_id": "CAM-VILLAMONTE-01",
   "site_name": "Villamonte Street Intersection",
   "road_name": "Circumferential Road",
-  "lat": 10.6665,
-  "lng": 122.9645,
+  "lat": 10.6642688,
+  "lng": 122.9675934,
 
   "roi": {
     "calibrated": false,
@@ -39,12 +39,15 @@
   },
 
   "congestion": {
-    "_note": "capacity and free_flow_kph must be calibrated from your own first week of data. free_flow_kph = 85th percentile of observed speeds during a light hour.",
-    "capacity_vehicles": 20,
+    "_note": "capacity is how many vehicles this camera view holds when packed. busy_occupancy is the frame coverage that counts as a full road while the ROI is still the whole frame (after calibrate.py draws the road, occupancy is used raw). stopped_pps / free_flow_pps score pause vs motion in pixels/sec when km/h is not calibrated. Bands stay LIGHT 0-39, MODERATE 40-64, HEAVY 65-100.",
+    "capacity_vehicles": 12,
     "free_flow_kph": 40.0,
     "weights": { "occupancy": 0.45, "load": 0.30, "slowness": 0.25 },
     "bands": { "moderate": 40, "heavy": 65, "critical": 85 },
-    "smoothing_window_seconds": 30
+    "smoothing_window_seconds": 12,
+    "busy_occupancy": 0.16,
+    "free_flow_pps": 50.0,
+    "stopped_pps": 8.0
   },
 
   "tracking": {

@@ -46,12 +46,16 @@ function payloadVehicleCount(payload) {
     return Number(payload.vehicle_count);
 }
 
+function normalizeVisionLevel(level) {
+    if (level === 'CRITICAL') return 'HEAVY';
+    return VISION_LEVELS[level] ? level : 'LIGHT';
+}
+
 function visionLevelToScore(level) {
     return (VISION_LEVELS[level] || VISION_LEVELS.LIGHT).fallbackScore;
 }
 
 function scoreToVisionLevel(score) {
-    if (score >= CONGESTION_BANDS.critical) return 'CRITICAL';
     if (score >= CONGESTION_BANDS.heavy) return 'HEAVY';
     if (score >= CONGESTION_BANDS.moderate) return 'MODERATE';
     return 'LIGHT';
@@ -104,9 +108,8 @@ function visionStatusCaption(level) {
 }
 
 function classifyCongestion(score) {
-    if (score >= 85) return 'Severe';
-    if (score >= 65) return 'High';
-    if (score >= 45) return 'Moderate';
+    if (score >= CONGESTION_BANDS.heavy) return 'High';
+    if (score >= CONGESTION_BANDS.moderate) return 'Moderate';
     return 'Low';
 }
 

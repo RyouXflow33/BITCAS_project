@@ -48,7 +48,7 @@ function renderDispatchQueue() {
     count.textContent = `${openReports.length} open`;
 
     if (!openReports.length) {
-        target.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py — a report appears after HEAVY or CRITICAL holds for 3 intervals.');
+        target.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py — a report appears after HEAVY holds for 3 intervals.');
         return;
     }
 

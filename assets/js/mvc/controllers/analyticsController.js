@@ -38,8 +38,7 @@ async function refreshVisionHistory() {
             .slice(-VISION_HISTORY_MAX_ENTRIES);
         if (!telemetry.length) throw new Error('Vision history has no valid entries');
 
-        state.telemetry = telemetry;
-        saveState();
+        setVisionHistory(telemetry);
         applyHistorySourceTag(history);
         return true;
     } catch (error) {

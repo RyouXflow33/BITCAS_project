@@ -130,7 +130,7 @@
             <div><span>Total reports</span><strong id="aTotalReports">0</strong><small>All time in this browser</small></div>
             <div><span>Average congestion score</span><strong id="aAvgCongestion">0%</strong><small>Across loaded vision samples</small></div>
             <div><span>Resolved rate</span><strong id="aResolvedRate">0%</strong><small>Reports marked resolved</small></div>
-            <div><span>Class distribution</span><strong id="aClassSummary">--</strong><small>Low / Moderate / High / Severe</small></div>
+            <div><span>Class distribution</span><strong id="aClassSummary">--</strong><small>Low / Moderate / High</small></div>
         </div>
         <div class="kpi-grid" id="classificationBreakdown"></div>
     </section>

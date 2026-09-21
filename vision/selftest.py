@@ -60,6 +60,8 @@ class SyntheticGrabber:
     def __init__(self, *args, **kwargs):
         self.count = 0
         self.finished = False
+        self.is_file = False
+        self.fps = 25.0
 
     def read(self):
         if self.count >= TOTAL_FRAMES:
@@ -133,8 +135,10 @@ def run():
         failures.append(f"unknown congestion level {payload['congestion_level']}")
     if not 0 <= payload['congestion_score'] <= 100:
         failures.append("congestion score out of range")
-    if payload['color'] != tv.LEVEL_COLORS[payload['congestion_level']]:
-        failures.append("color does not match level")
+    if payload.get('positions'):
+        sample = payload['positions'][0]
+        if not (isinstance(sample, dict) and 'x' in sample and 'y' in sample):
+            failures.append("positions should be {x, y, class} objects")
     directions = {c['direction'] for c in crossings}
     if not directions:
         failures.append("crossings carry no direction")

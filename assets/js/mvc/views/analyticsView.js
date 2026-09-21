@@ -313,7 +313,7 @@ function renderHeatCell(cell, dayLabel, maxValue, isVolume) {
     const label = isVolume ? `${value} vehicles` : `congestion ${value}%`;
     const intensity = maxValue > 0 ? Math.min(1, cell.value / maxValue) : 0;
     // Volume has no natural colour bands, so it uses opacity on one hue while
-    // congestion reuses the four bands the rest of the dashboard speaks in.
+    // congestion reuses the three bands the rest of the dashboard speaks in.
     const style = isVolume
         ? `background:rgba(231,76,60,${(0.12 + intensity * 0.88).toFixed(2)})`
         : `background:${visionLevelColor(scoreToVisionLevel(cell.value))}`;
@@ -338,7 +338,7 @@ function renderHeatmapLegend(heatmap, hasData) {
         return;
     }
 
-    legend.innerHTML = ['LIGHT', 'MODERATE', 'HEAVY', 'CRITICAL'].map((level) =>
+    legend.innerHTML = ['LIGHT', 'MODERATE', 'HEAVY'].map((level) =>
         `<span class="heat-key"><i style="background:${visionLevelColor(level)}"></i>${level.charAt(0)}${level.slice(1).toLowerCase()}</span>`).join('');
 }
 

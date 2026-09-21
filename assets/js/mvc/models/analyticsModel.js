@@ -7,7 +7,7 @@
 
 function computeAnalytics(heatmapMetric) {
     const reports = state.reports;
-    const telemetry = [...state.telemetry].sort((first, second) => new Date(first.timestampIso) - new Date(second.timestampIso));
+    const telemetry = [...getVisionHistoryRecords()].sort((first, second) => new Date(first.timestampIso) - new Date(second.timestampIso));
     const rollups = getVisionHourly();
     const capability = computeDataCapability(telemetry, rollups);
 
@@ -26,7 +26,7 @@ function computeAnalytics(heatmapMetric) {
         : 0;
     const currentVehicleCount = state.live.currentVehicleCount || 0;
     const baselineDelta = currentVehicleCount - baselineVehicleAverage;
-    const currentLevel = telemetry.at(-1)?.visionLevel || state.live.visionLevel || 'LIGHT';
+    const currentLevel = state.live.visionLevel || telemetry.at(-1)?.visionLevel || 'LIGHT';
     const duration = computeCongestionDuration(telemetry, currentLevel);
     const weekTrend = computeWeekTrend(telemetry);
     const averageResolutionMinutes = computeAverageResolutionMinutes(reports);
@@ -417,7 +417,7 @@ function detectAnomalies(telemetry, hourly) {
     // Vehicles present but not moving: the classic obstruction signature.
     if (speedRatio !== null && occupancyRatio !== null && speedRatio < 0.45 && occupancyRatio >= 0.9) {
         items.push({
-            severity: 'Severe',
+            severity: 'High',
             title: 'Traffic stalled - possible obstruction',
             detail: `Speed is ${Math.round(speedRatio * 100)}% of normal for this hour while occupancy is ${Math.round(occupancyRatio * 100)}% of normal. Vehicles are present but not moving.`,
             metric: `${recent.avgSpeedKph.toFixed(1)} km/h vs ${baseline.speed.mean.toFixed(1)} km/h normal`
@@ -426,7 +426,7 @@ function detectAnomalies(telemetry, hourly) {
 
     if (flowRatio !== null && occupancyRatio !== null && flowRatio < 0.4 && occupancyRatio >= 0.9) {
         items.push({
-            severity: 'Severe',
+            severity: 'High',
             title: 'Flow collapse with road still full',
             detail: `Only ${Math.round(flowRatio * 100)}% of the usual vehicles are getting through while occupancy holds steady. Consistent with a blockage downstream.`,
             metric: `${recent.crossingsPerMinute.toFixed(1)} veh/min vs ${baseline.crossingsPerMinute.mean.toFixed(1)} normal`
@@ -551,9 +551,12 @@ function getHotspotRankingData(limit) {
 }
 
 function getClassificationCounts() {
-    const classes = ['Low', 'Moderate', 'High', 'Severe'];
+    const classes = ['Low', 'Moderate', 'High'];
     return classes.map((label) => ({
         label,
-        count: state.reports.filter((report) => report.severity === label).length
+        count: state.reports.filter((report) => {
+            const severity = report.severity === 'Severe' ? 'High' : report.severity;
+            return severity === label;
+        }).length
     }));
 }
