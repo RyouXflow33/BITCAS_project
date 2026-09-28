@@ -15,6 +15,7 @@ function bootSession() {
     if (page === 'analytics') initAnalyticsPage();
     if (page === 'incidents') initReportsPage();
     if (page === 'dispatch') initDispatchPage();
+    if (page === 'accounts') initAccountsPage();
 
     startGlobalVisionPoller();
 }
@@ -55,4 +56,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isAuthed) return;
 
     bootSession();
+});
+
+window.addEventListener('pageshow', (event) => {
+    if (!event.persisted || loadAuthSession()) return;
+    const shell = document.getElementById('appShell');
+    const overlay = document.getElementById('authOverlay');
+    if (window.__bitcasVisionPoller) {
+        clearInterval(window.__bitcasVisionPoller);
+        window.__bitcasVisionPoller = null;
+    }
+    applyAuthUi(false, null, shell, overlay);
 });

@@ -41,7 +41,6 @@ Laptop demo and Pi field run use the **same script**. Only the source and the `-
 | [`vision/calibrate.py`](../vision/calibrate.py) | Click ROI, counting line, and 4-point speed rectangle on a still frame; saves into `site_config.json` |
 | [`vision/site_config.json`](../vision/site_config.json) | Site name, camera id, bands, capacity, publish intervals, calibration flags |
 | [`vision/selftest.py`](../vision/selftest.py) | Feeds synthetic detections through the real classes and checks the JSON contract |
-| [`vision/make_sample_data.py`](../vision/make_sample_data.py) | Writes fake JSONL so Analytics can render without a camera. **Do not run this on the Pi in production** |
 
 Supporting pieces next to the script (not all committed): `yolov8n.pt` (PyTorch weights), `yolov8n_ncnn_model/` (Pi-friendly export).
 
@@ -151,7 +150,7 @@ Built in `_build_payload()`. Schema **2**. `source` is `traffic_vision_system`.
 
 v1 aliases (`vehicle_count`, `color`, `label`) stay on the payload so an older UI would still parse it.
 
-**Reports rule (browser, not Python):** `maybeCreateEvidenceReport()` creates a case only if `source` is `traffic_vision_system`, the level is HEAVY, and `snapshot_url` is set. Simulate-button (`bitcas_simulation`) and `make_sample_data.py` (`sample_generator`) cannot open a case. Older files that still say CRITICAL are treated as HEAVY.
+**Reports rule (browser, not Python):** `maybeCreateEvidenceReport()` creates a case only if `source` is `traffic_vision_system`, the level is HEAVY, and `snapshot_url` is set. Simulate-button ticks (`bitcas_simulation`) and any leftover rows stamped `sample_generator` cannot open a case. Older files that still say CRITICAL are treated as HEAVY.
 
 ---
 
@@ -215,7 +214,6 @@ The Pi is the camera computer. It should run vision and write files. It should *
 ### Do not put on the Pi
 
 - PHP dashboard, officer roster, OneSignal, Analytics page, XAMPP
-- `make_sample_data.py` as a substitute for the camera
 
 Those run on the laptop (XAMPP) or Hostinger and **read** what the Pi writes.
 

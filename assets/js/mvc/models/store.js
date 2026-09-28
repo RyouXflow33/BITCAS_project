@@ -35,7 +35,8 @@ function buildDefaultState() {
         snapshots: [],
         advisories: [],
         officers: [],
-        assignments: []
+        assignments: [],
+        users: [seedSuperAdmin()]
     };
 }
 
@@ -47,11 +48,14 @@ function ensureStateShape(s) {
     if (!s.snapshots) s.snapshots = [];
     if (!s.officers) s.officers = [];
     if (!s.assignments) s.assignments = [];
+    if (!Array.isArray(s.users) || !s.users.length) s.users = [seedSuperAdmin()];
+    if (!s.nextUserNumber) s.nextUserNumber = Math.max(2, s.users.length + 1);
     if (!s.live) s.live = { currentVehicleCount: 0, previousVehicleCount: 0, congestionScore: 0, lastSyncIso: new Date().toISOString() };
     if (!s.nextReportNumber) s.nextReportNumber = 1;
     if (!s.nextAssignmentNumber) s.nextAssignmentNumber = 1;
     s.officers = s.officers.map(normalizeOfficer);
     s.assignments = s.assignments.map(normalizeAssignment);
+    s.users = s.users.map(normalizeUser);
     s.reports.forEach((report) => {
         if (typeof report.falsePositive !== 'boolean') report.falsePositive = false;
         if (!report.resolvedAtIso && report.status === 'Resolved') report.resolvedAtIso = report.updatedAtIso || report.createdAtIso || null;
@@ -95,7 +99,9 @@ function normalizeAssignment(assignment) {
         enrouteAtIso: assignment.enrouteAtIso || null,
         onsceneAtIso: assignment.onsceneAtIso || null,
         resolvedAtIso: assignment.resolvedAtIso || null,
-        fieldNotes: assignment.fieldNotes || ''
+        fieldNotes: assignment.fieldNotes || '',
+        createdByUserId: assignment.createdByUserId || null,
+        updatedByUserId: assignment.updatedByUserId || null
     };
 }
 
@@ -106,17 +112,180 @@ function loadAuthSession() {
         const raw = localStorage.getItem(BITCAS_AUTH_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
-        if (!parsed.username) return null;
+        const roleOk = parsed.role === 'super_admin' || parsed.role === 'traffic_desk';
+        if (!parsed.userId || !parsed.username || !roleOk) {
+            localStorage.removeItem(BITCAS_AUTH_KEY);
+            return null;
+        }
         return parsed;
     } catch (error) {
         return null;
     }
 }
 
-function isValidCredential(username, password) {
-    const userOk = username === 'lguadmin' || username === 'admin';
-    const passOk = password === 'bitcas123' || password === 'admin123';
-    return userOk && passOk;
+function seedSuperAdmin() {
+    return {
+        id: 'USR-1',
+        fullName: 'LGU Admin',
+        username: 'lguadmin',
+        passwordHash: SEEDED_SUPER_ADMIN_HASH,
+        role: 'super_admin',
+        active: true,
+        mustChangePassword: false,
+        createdBy: null,
+        createdAtIso: new Date().toISOString()
+    };
+}
+
+function normalizeUser(user) {
+    return {
+        id: user.id,
+        fullName: user.fullName || user.username,
+        username: String(user.username || '').trim().toLowerCase(),
+        passwordHash: user.passwordHash,
+        role: user.role === 'super_admin' ? 'super_admin' : 'traffic_desk',
+        active: user.active !== false,
+        mustChangePassword: Boolean(user.mustChangePassword),
+        createdBy: user.createdBy || null,
+        createdAtIso: user.createdAtIso || new Date().toISOString()
+    };
+}
+
+function hashPassword(password) {
+    const data = new TextEncoder().encode(PASSWORD_PEPPER + String(password || ''));
+    return crypto.subtle.digest('SHA-256', data).then((buffer) => {
+        return Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    });
+}
+
+function accountUsers() {
+    if (state && Array.isArray(state.users) && state.users.length) return state.users;
+    const loaded = loadState();
+    ensureStateShape(loaded);
+    return loaded.users;
+}
+
+function roleLabel(role) {
+    return role === 'super_admin' ? 'Super admin' : 'Traffic Desk';
+}
+
+function currentSession() {
+    return loadAuthSession();
+}
+
+function isSuperAdmin() {
+    return currentSession()?.role === 'super_admin';
+}
+
+function currentActor() {
+    const session = currentSession();
+    if (!session?.userId) return { userId: null };
+    return { userId: session.userId };
+}
+
+function userLabel(userId) {
+    if (!userId) return '—';
+    const user = (state?.users || []).find((item) => item.id === userId);
+    return user ? user.fullName : userId;
+}
+
+async function authenticateUser(username, password) {
+    const name = String(username || '').trim().toLowerCase();
+    const user = accountUsers().find((item) => item.username === name);
+    if (!user) return { error: 'Invalid username or password.' };
+    if (!user.active) return { error: 'This account is disabled. Ask the super admin.' };
+    const hash = await hashPassword(password);
+    if (hash !== user.passwordHash) return { error: 'Invalid username or password.' };
+    return { user };
+}
+
+function sessionFromUser(user) {
+    return {
+        userId: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        mustChangePassword: Boolean(user.mustChangePassword),
+        loginAtIso: new Date().toISOString()
+    };
+}
+
+function createDeskUser(fields) {
+    if (!isSuperAdmin()) return { error: 'Only the super admin can add a desk account.' };
+    const fullName = String(fields.fullName || '').trim();
+    const username = String(fields.username || '').trim().toLowerCase();
+    const password = String(fields.password || '');
+    if (!fullName) return { error: 'Full name is required.' };
+    if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+        return { error: 'Username must be 3–32 characters: letters, numbers, dot, dash, or underscore.' };
+    }
+    if (password.length < 8) return { error: 'Temporary password must be at least 8 characters.' };
+    if (state.users.some((user) => user.username === username)) {
+        return { error: 'That username is already in use.' };
+    }
+    return { pending: { fullName, username, password } };
+}
+
+async function commitDeskUser(pending) {
+    const hash = await hashPassword(pending.password);
+    const user = normalizeUser({
+        id: `USR-${state.nextUserNumber}`,
+        fullName: pending.fullName,
+        username: pending.username,
+        passwordHash: hash,
+        role: 'traffic_desk',
+        active: true,
+        mustChangePassword: true,
+        createdBy: currentActor().userId,
+        createdAtIso: new Date().toISOString()
+    });
+    state.nextUserNumber += 1;
+    state.users.push(user);
+    saveState();
+    return { user };
+}
+
+function setDeskUserActive(userId, active) {
+    if (!isSuperAdmin()) return { error: 'Only the super admin can change account access.' };
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) return { error: 'Account not found.' };
+    if (user.id === currentActor().userId && !active) {
+        return { error: 'You cannot disable the account you are using.' };
+    }
+    const otherAdmins = state.users.filter((item) => item.role === 'super_admin' && item.active && item.id !== user.id);
+    if (user.role === 'super_admin' && !active && !otherAdmins.length) {
+        return { error: 'Keep at least one active super admin.' };
+    }
+    user.active = Boolean(active);
+    saveState();
+    return { user };
+}
+
+async function resetDeskUserPassword(userId, password) {
+    if (!isSuperAdmin()) return { error: 'Only the super admin can reset a password.' };
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) return { error: 'Account not found.' };
+    if (String(password || '').length < 8) return { error: 'Temporary password must be at least 8 characters.' };
+    user.passwordHash = await hashPassword(password);
+    user.mustChangePassword = true;
+    saveState();
+    return { user };
+}
+
+async function changeOwnPassword(currentPassword, nextPassword) {
+    const session = currentSession();
+    const user = state.users.find((item) => item.id === session?.userId);
+    if (!user) return { error: 'Sign in again before changing the password.' };
+    if (String(nextPassword || '').length < 8) return { error: 'New password must be at least 8 characters.' };
+    const currentHash = await hashPassword(currentPassword);
+    if (currentHash !== user.passwordHash) return { error: 'Current password does not match.' };
+    user.passwordHash = await hashPassword(nextPassword);
+    user.mustChangePassword = false;
+    saveState();
+    const nextSession = sessionFromUser(user);
+    nextSession.loginAtIso = session.loginAtIso;
+    saveAuthSession(nextSession);
+    return { user };
 }
 
 function saveAuthSession(session) {
@@ -288,7 +457,7 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
 
 function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
     // Only the live vision node may open a case. Simulate-button ticks
-    // (`bitcas_simulation`) and make_sample_data.py (`sample_generator`) must not.
+    // (`bitcas_simulation`) and leftover sample rows (`sample_generator`) must not.
     if ((payload.source || '') !== 'traffic_vision_system') return;
     const isHeavy = normalizeVisionLevel(payload.congestion_level) === 'HEAVY';
     if (!payload.snapshot_url || !isHeavy) return;
@@ -313,7 +482,9 @@ function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
         snapshotUrl: payload.snapshot_url,
         createdAtIso: nowIso,
         updatedAtIso: nowIso,
-        resolvedAtIso: null
+        resolvedAtIso: null,
+        createdByUserId: currentActor().userId,
+        updatedByUserId: currentActor().userId
     });
 
     state.nextReportNumber += 1;
@@ -399,7 +570,8 @@ function addAdvisory({ level, area, message }) {
         area,
         message,
         sentAtIso: new Date().toISOString(),
-        channel: 'Push simulator'
+        channel: 'Push simulator',
+        createdByUserId: currentActor().userId
     });
     state.advisories = state.advisories.slice(0, 20);
     saveState();
@@ -433,6 +605,7 @@ function updateReport(reportId, fields) {
         report.congestionScore = scoreFromVehicleCount(report.vehicleCount);
     }
     report.updatedAtIso = new Date().toISOString();
+    report.updatedByUserId = currentActor().userId;
 
     saveState();
     return report;
@@ -444,6 +617,7 @@ function resolveReport(reportId) {
     report.status = 'Resolved';
     report.resolvedAtIso = new Date().toISOString();
     report.updatedAtIso = report.resolvedAtIso;
+    report.updatedByUserId = currentActor().userId;
     saveState();
     return report;
 }
@@ -481,6 +655,7 @@ function markReportFalsePositive(reportId) {
     report.resolvedAtIso = new Date().toISOString();
     report.updatedAtIso = report.resolvedAtIso;
     report.notes = [report.notes, 'Marked not congestion (false positive).'].filter(Boolean).join(' ');
+    report.updatedByUserId = currentActor().userId;
 
     const assignment = getActiveAssignmentForReport(reportId);
     if (assignment) resolveAssignment(assignment.id);
@@ -581,6 +756,7 @@ function nextOfficerId() {
     return `BTAO-${String(next).padStart(2, '0')}`;
 }
 
+// Field roster only. A badge is not a desk login; the super admin creates those on Desk accounts.
 function createOfficer(fields) {
     const fullName = String(fields.fullName || '').trim();
     if (!fullName) return { error: 'Full name is required.' };
@@ -654,7 +830,8 @@ function assignOfficerToReport(officerId, reportId) {
         enrouteAtIso: null,
         onsceneAtIso: null,
         resolvedAtIso: null,
-        fieldNotes: ''
+        fieldNotes: '',
+        createdByUserId: currentActor().userId
     };
 
     state.nextAssignmentNumber += 1;
@@ -662,6 +839,7 @@ function assignOfficerToReport(officerId, reportId) {
     officer.status = 'Assigned';
     report.status = 'Assigned';
     report.updatedAtIso = nowIso;
+    report.updatedByUserId = currentActor().userId;
 
     saveState();
     return assignment.id;
@@ -684,7 +862,11 @@ function advanceAssignment(assignmentId) {
     if (officer) officer.status = next;
 
     const report = findReport(assignment.reportId);
-    if (report) report.updatedAtIso = nowIso;
+    if (report) {
+        report.updatedAtIso = nowIso;
+        report.updatedByUserId = currentActor().userId;
+    }
+    assignment.updatedByUserId = currentActor().userId;
 
     saveState();
     return assignment;
@@ -707,7 +889,9 @@ function resolveAssignment(assignmentId) {
         report.status = 'Resolved';
         report.resolvedAtIso = nowIso;
         report.updatedAtIso = nowIso;
+        report.updatedByUserId = currentActor().userId;
     }
+    assignment.updatedByUserId = currentActor().userId;
 
     saveState();
     return assignment;

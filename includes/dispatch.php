@@ -40,7 +40,7 @@
     <div class="roster-layout">
         <div class="roster-left">
             <section class="panel">
-                <div class="panel-head"><div><h2><?= icon('user-plus') ?> Create officer profile</h2><span>Saved in this browser</span></div></div>
+                <div class="panel-head"><div><h2><?= icon('user-plus') ?> Create officer profile</h2><span>Roster only. This does not create a login.</span></div></div>
                 <form class="form-grid officer-create-form" id="officerCreateForm">
                     <div>
                         <label for="officerBadge">Badge ID</label>

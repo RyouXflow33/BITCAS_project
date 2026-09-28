@@ -1,13 +1,18 @@
 <?php
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 $page = $_GET['page'] ?? 'command';
-$allowed = ['command', 'analytics', 'incidents', 'dispatch'];
+$allowed = ['command', 'analytics', 'incidents', 'dispatch', 'accounts'];
 if (!in_array($page, $allowed, true)) $page = 'command';
 
 $titleMap = [
     'command' => 'Traffic Map',
     'analytics' => 'Traffic Analytics',
     'incidents' => 'Congestion Reports',
-    'dispatch' => 'Dispatch'
+    'dispatch' => 'Dispatch',
+    'accounts' => 'Desk accounts'
 ];
 $pageTitle = $titleMap[$page];
 
@@ -30,25 +35,24 @@ require_once __DIR__ . '/includes/icons.php';
 </head>
 <body data-page="<?= htmlspecialchars($page) ?>">
 <?php render_icon_sprite(); ?>
-<div class="auth-overlay" id="authOverlay" hidden>
-    <form class="login-card" id="loginForm">
+<div class="auth-overlay" id="authOverlay">
+    <form class="login-card" id="loginForm" autocomplete="off">
         <div class="login-mark"><?= icon('map') ?></div>
         <h2>BITCAS Login</h2>
         <p>LGU Traffic Dashboard</p>
 
         <label for="loginUsername">Username</label>
-        <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" type="text" autocomplete="username" required></div>
+        <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" name="bitcas-user" type="text" autocomplete="off" value="" required></div>
 
         <label for="loginPassword">Password</label>
-        <div class="field-wrap"><?= icon('badge') ?><input id="loginPassword" type="password" autocomplete="current-password" required></div>
+        <div class="field-wrap"><?= icon('badge') ?><input id="loginPassword" name="bitcas-pass" type="password" autocomplete="off" value="" required></div>
 
-        <small>Demo credentials: lguadmin / bitcas123</small>
         <div id="loginError" class="login-error"></div>
         <button class="btn primary full" type="submit"><?= icon('login') ?> Login</button>
     </form>
 </div>
 
-<div class="app-shell" id="appShell">
+<div class="app-shell" id="appShell" hidden>
     <?php include __DIR__ . '/includes/sidebar.php'; ?>
 
     <main class="main">
@@ -79,6 +83,7 @@ require_once __DIR__ . '/includes/icons.php';
                 case 'analytics': include __DIR__ . '/includes/analytics.php'; break;
                 case 'incidents': include __DIR__ . '/includes/incidents.php'; break;
                 case 'dispatch': include __DIR__ . '/includes/dispatch.php'; break;
+                case 'accounts': include __DIR__ . '/includes/accounts.php'; break;
                 default: include __DIR__ . '/includes/command.php';
             }
             ?>
@@ -99,12 +104,14 @@ require_once __DIR__ . '/includes/icons.php';
 <script src="assets/js/mvc/views/analyticsView.js"></script>
 <script src="assets/js/mvc/views/reportsView.js"></script>
 <script src="assets/js/mvc/views/dispatchView.js"></script>
+<script src="assets/js/mvc/views/accountsView.js"></script>
 <!-- MVC: controllers -->
 <script src="assets/js/mvc/controllers/authController.js"></script>
 <script src="assets/js/mvc/controllers/commandController.js"></script>
 <script src="assets/js/mvc/controllers/analyticsController.js"></script>
 <script src="assets/js/mvc/controllers/reportsController.js"></script>
 <script src="assets/js/mvc/controllers/dispatchController.js"></script>
+<script src="assets/js/mvc/controllers/accountsController.js"></script>
 <!-- MVC: bootstrap -->
 <script src="assets/js/mvc/app.js"></script>
 </body>

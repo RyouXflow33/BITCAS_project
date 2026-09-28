@@ -1,6 +1,11 @@
 // MVC: shared constants and static datasets (Model layer support).
 const BITCAS_STORAGE_KEY = 'bitcas_ui_ops_v1';
 const BITCAS_AUTH_KEY = 'bitcas_auth_v1';
+// Local stand-in for the future MySQL `users` table. Officers stay a separate roster.
+const USER_ROLES = { super_admin: 'Super admin', traffic_desk: 'Traffic Desk' };
+const PASSWORD_PEPPER = 'bitcas-lgu|';
+// SHA-256 of PASSWORD_PEPPER + the setup password. First super admin only.
+const SEEDED_SUPER_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
 const VISION_FIXTURE_URL = 'assets/data/congestion.json';
 const VISION_POLL_MS = 3000;
 // v2 appends one aggregated line per minute; the legacy array is the fallback

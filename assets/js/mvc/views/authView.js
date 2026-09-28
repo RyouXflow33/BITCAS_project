@@ -13,10 +13,10 @@ function applyAuthUi(isAuthed, session, shell, overlay) {
     if (isAuthed) {
         overlay.hidden = true;
         shell.hidden = false;
-        const name = session?.username ? session.username.toUpperCase() : 'LGUADMIN';
+        const name = session?.fullName || (session?.username ? session.username.toUpperCase() : 'LGU Admin');
         setText('currentUserName', name);
-        setText('currentUserRole', session?.role || 'Traffic Desk');
-        setText('currentUserAvatar', name.slice(0, 2));
+        setText('currentUserRole', roleLabel(session?.role));
+        setText('currentUserAvatar', name.slice(0, 2).toUpperCase());
         return;
     }
 
@@ -29,6 +29,16 @@ function setupSidebar() {
     const toggle = document.getElementById('menuToggle');
     if (toggle && sidebar) {
         toggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+    }
+
+    const settingsToggle = document.getElementById('settingsToggle');
+    const settingsMenu = document.getElementById('settingsMenu');
+    if (settingsToggle && settingsMenu) {
+        settingsToggle.addEventListener('click', () => {
+            const open = settingsToggle.getAttribute('aria-expanded') === 'true';
+            settingsToggle.setAttribute('aria-expanded', String(!open));
+            settingsMenu.hidden = open;
+        });
     }
 }
 

@@ -112,8 +112,8 @@ computed from one fixed camera without adding the counting line, the calibration
 definitions described in §4. Here is every item.
 
 Verdicts are as of the original analysis; the **Status** column records where each one landed
-after Phases 1 and 4. "Built, needs data" means the code is written and verified against the
-sample generator, and will be accurate once the Pi has logged long enough.
+after Phases 1 and 4. "Built, needs data" means the code is written and checked with
+`vision/selftest.py`, and will be accurate once the Pi has logged long enough.
 
 | # | Metric you listed | Verdict | What it needs | Status |
 |---|---|---|---|---|
@@ -448,7 +448,6 @@ dashboard keeps working. Delivered:
 | `vision/traffic_vision.py` | Rewritten: threaded capture, ID-keyed tracker, counting lines, occupancy, continuous scoring, NCNN backend, health block, JSONL output |
 | `vision/calibrate.py` | Click the ROI / counting line / speed rectangle on a real frame and save to config |
 | `vision/selftest.py` | Whole pipeline on synthetic detections — no camera, no YOLO |
-| `vision/make_sample_data.py` | A day of realistic v2 data for dashboard work, labelled SAMPLE DATA in the UI |
 
 *Still to do at the site: stand at the intersection and hand-count 10 minutes against the system.
 That comparison belongs in your paper, and it is the only way to know the thresholds are right.*
@@ -463,13 +462,12 @@ Full assignment lifecycle with timestamps, officer profiles, auto-recommendation
 Kanban dispatch, false-positive flag, advisory linkage.
 
 **Phase 4 — Analytics that need history — ✅ BUILT, ⏳ WAITING ON DATA**
-The code is written and verified against the sample generator. It will not say anything true
+The code is written and checked with `vision/selftest.py`. It will not say anything true
 about Villamonte until the Pi has logged ~2 weeks. Delivered:
 
 | File | What it does |
 |---|---|
 | `vision/traffic_vision.py` | `aggregate_minute_records()` + hourly flush → `traffic_hourly.jsonl`, one line per hour, flushed on the hour boundary and on shutdown |
-| `vision/make_sample_data.py` | `--days 28` writes weeks of rollups plus 48 h of minute detail, with a live blockage injected so the detector has a real signature to catch |
 | `analyticsModel.js` | `computeHeatmap`, `computeSlotBaseline`, `detectAnomalies`, `computeForecast` |
 | `analytics.php` / `analyticsView.js` | Incident panel, forecast cards, congestion/volume heatmap with per-cell sample counts |
 | `analyticsView.js` | PDF page 2: detected anomalies, forecast, and the historical basis behind both |

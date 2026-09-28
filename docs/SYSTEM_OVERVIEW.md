@@ -66,7 +66,6 @@ The loose coupling is deliberate: either side can fail without crashing the othe
 | Snapshots | `assets/snapshots/`, fires on HEAVY **or** CRITICAL, 15-minute cooldown, max 100 |
 | Tuning | `--backend {auto,ncnn,pytorch,haar}`, `--inference-size`, `--detect-every`, `--threads`, `--confidence`, `--update-interval`, `--config`, `--no-display` |
 | Self-test | [selftest.py](../vision/selftest.py) — runs the whole pipeline on synthetic detections; no camera or YOLO needed |
-| Sample data | [make_sample_data.py](../vision/make_sample_data.py) — `--days 28` writes weeks of hourly rollups plus the most recent 48 h of minute detail, with an in-progress blockage injected so the incident detector has something real to catch. Stamped `source: sample_generator` so the UI labels it SAMPLE DATA |
 
 Payload contract v2 (consumed by the web app; v1 keys are retained for
 compatibility so a dashboard update is never required in lockstep):
@@ -229,7 +228,7 @@ flowchart TD
 | `includes/mobile.php`, `includes/optimized.php` | Static showcase pages with hardcoded numbers; **not in the router** |
 | Speed values | Real km/h **only after** `calibrate.py` has been run at the site. Until then the payload sets `speed_calibrated: false` and the dashboard says "Not calibrated" instead of showing a pixel figure dressed up as a speed |
 | Intersection comparison | One camera, so the "Locations" ranking is scored from operator reports, not from vision. A second node makes it real; nothing in the model assumes a single site |
-| Forecast and anomaly baselines | Statistically sound but only as good as the history behind them. They need ~2 weeks of live capture; against the sample generator they are exercising code paths, not predicting Villamonte |
+| Forecast and anomaly baselines | Statistically sound but only as good as the history behind them. They need ~2 weeks of live capture from `traffic_vision.py` before they describe Villamonte |
 | Backend persistence | None — all state is browser localStorage |
 
 ---

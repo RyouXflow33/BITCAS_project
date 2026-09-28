@@ -95,6 +95,7 @@ function fillReportEditor(reportId) {
         <div class="case-evidence">${renderEvidenceHtml(report)}</div>
         <div class="report-meta-strip">
             <div><span>Opened</span><strong>${formatDateTime(report.createdAtIso)}</strong></div>
+            <div><span>Desk</span><strong>${userLabel(report.updatedByUserId || report.createdByUserId)}</strong></div>
             <div><span>Source</span><strong>Pi camera · 3-interval snapshot</strong></div>
             <div><span>Camera</span><strong>${report.cameraId || (camera ? 'CAM-VILLAMONTE-01' : '--')}</strong></div>
             <div><span>Officer</span><strong>${officer}</strong></div>

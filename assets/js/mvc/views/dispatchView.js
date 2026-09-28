@@ -185,6 +185,7 @@ function renderAssignmentCard(assignment) {
             <strong>${assignment.id}</strong>
             <span>${report ? report.location : assignment.reportId}</span>
             <span>${officer ? officer.name : assignment.officerId} · ${assignment.reportId}</span>
+            ${assignment.createdByUserId ? `<span>Assigned by ${userLabel(assignment.createdByUserId)}</span>` : ''}
             <small class="${sla.breached ? 'sla-breach' : 'sla-ok'}">${slaText}</small>
             ${nextLabel ? `<button class="btn primary tiny" data-advance-assignment="${assignment.id}">${nextLabel}</button>` : ''}
         </div>
