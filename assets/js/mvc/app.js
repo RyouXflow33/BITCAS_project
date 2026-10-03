@@ -33,7 +33,14 @@ function startGlobalVisionPoller() {
         }
         renderGlobalCounters();
         const page = document.body.dataset.page;
-        if (page === 'command') renderCommandPage();
+        if (page === 'command') {
+            const now = Date.now();
+            if (!window.__bitcasAdvisoryRefreshAt || now - window.__bitcasAdvisoryRefreshAt > 15000) {
+                window.__bitcasAdvisoryRefreshAt = now;
+                await refreshAdvisories();
+            }
+            renderCommandPage();
+        }
         if (page === 'incidents') renderReportsPage();
         if (page === 'dispatch') renderDispatchPage();
         if (page === 'analytics') {

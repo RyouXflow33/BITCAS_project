@@ -1,6 +1,7 @@
 # PHP runtime artifacts
 php-server.pid
 php-server.log
+api/onesignal.local.php
 
 # Python cache and logs
 __pycache__/
@@ -19,4 +20,4 @@ assets/data/traffic_hourly.jsonl
 assets/data/crossings.jsonl
 
 # Exported NCNN model (regenerate with: yolo export model=yolov8n.pt format=ncnn)
-vision/yolov8n_ncnn_model/
+vision/yolov8n_ncnn_model/image.png

@@ -9,6 +9,9 @@ function initCommandPage() {
     bindMapFullscreen();
     bindCommandActions();
     renderCommandPage();
+    refreshAdvisories().then(() => {
+        if (document.body.dataset.page === 'command') renderCommandPage();
+    });
 }
 
 function bindLayerChips() {
@@ -80,26 +83,37 @@ function bindCommandActions() {
 
     const advisoryForm = document.getElementById('advisoryForm');
     if (advisoryForm) {
-        advisoryForm.addEventListener('submit', (event) => {
+        advisoryForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const level = getValue('advisoryLevel');
             const area = getValue('advisoryArea');
             const message = getValue('advisoryMessage');
             if (!level || !area || !message) return;
 
-            addAdvisory({ level, area, message });
-
-            advisoryForm.reset();
-            setValue('advisoryArea', 'Villamonte Street Intersection');
-            renderCommandPage();
+            setText('advisoryStatus', 'Sending…');
+            try {
+                const result = await publishAdvisory({ level, area, message });
+                advisoryForm.reset();
+                setValue('advisoryArea', 'Villamonte Street Intersection');
+                setText('advisoryStatus', result.push?.sent ? 'Sent to driver phones' : (result.push?.reason || 'Saved'));
+                renderCommandPage();
+            } catch (error) {
+                setText('advisoryStatus', error.message || 'Broadcast failed');
+            }
         });
     }
 
     const clearBtn = document.getElementById('clearAdvisoriesBtn');
     if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            clearAdvisories();
-            renderCommandPage();
+        clearBtn.addEventListener('click', async () => {
+            setText('advisoryStatus', 'Clearing…');
+            try {
+                await clearAdvisories();
+                setText('advisoryStatus', 'Driver phones');
+                renderCommandPage();
+            } catch (error) {
+                setText('advisoryStatus', error.message || 'Could not clear advisories');
+            }
         });
     }
 }

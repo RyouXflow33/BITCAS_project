@@ -59,7 +59,7 @@
 
 <div class="lower-grid">
     <section class="panel">
-        <div class="panel-head"><div><h2><?= icon('megaphone') ?> Broadcast</h2><span>OneSignal flow</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('megaphone') ?> Broadcast</h2><span id="advisoryStatus">Driver phones</span></div></div>
         <form class="form-grid" id="advisoryForm">
             <div>
                 <label for="advisoryLevel">Congestion level</label>

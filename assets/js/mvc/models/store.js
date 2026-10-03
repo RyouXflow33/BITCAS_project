@@ -563,23 +563,59 @@ function buildSnapshotSvgDataUrl({ severity, score, vehicle }) {
 
 // --- Advisory model ---
 
-function addAdvisory({ level, area, message }) {
-    state.advisories.unshift({
-        id: `ADV-${Date.now()}`,
-        level,
-        area,
-        message,
-        sentAtIso: new Date().toISOString(),
-        channel: 'Push simulator',
-        createdByUserId: currentActor().userId
-    });
-    state.advisories = state.advisories.slice(0, 20);
-    saveState();
+async function fetchAdvisories() {
+    try {
+        const response = await fetch(`${ADVISORIES_URL}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) return null;
+        const list = await response.json();
+        return Array.isArray(list) ? list : [];
+    } catch (error) {
+        return null;
+    }
 }
 
-function clearAdvisories() {
-    state.advisories = [];
+async function refreshAdvisories() {
+    const list = await fetchAdvisories();
+    if (!list || !state) return false;
+    state.advisories = list;
     saveState();
+    return true;
+}
+
+async function publishAdvisory({ level, area, message }) {
+    const response = await fetch(ADVISORY_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'broadcast',
+            level,
+            area,
+            message,
+            createdByUserId: currentActor().userId
+        })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) {
+        throw new Error(body.error || 'Broadcast failed');
+    }
+    await refreshAdvisories();
+    return body;
+}
+
+async function clearAdvisories() {
+    const response = await fetch(ADVISORY_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear' })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) {
+        throw new Error(body.error || 'Could not clear advisories');
+    }
+    if (state) {
+        state.advisories = [];
+        saveState();
+    }
 }
 
 // --- Report model ---

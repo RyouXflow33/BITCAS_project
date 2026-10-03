@@ -7,6 +7,8 @@ const PASSWORD_PEPPER = 'bitcas-lgu|';
 // SHA-256 of PASSWORD_PEPPER + the setup password. First super admin only.
 const SEEDED_SUPER_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
 const VISION_FIXTURE_URL = 'assets/data/congestion.json';
+const ADVISORIES_URL = 'assets/data/advisories.json';
+const ADVISORY_API_URL = 'api/advisories.php';
 const VISION_POLL_MS = 3000;
 // v2 appends one aggregated line per minute; the legacy array is the fallback
 // so the dashboard still works against data captured before the rewrite.

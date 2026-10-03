@@ -138,7 +138,7 @@ function renderAdvisoryTimeline() {
             <div>
                 <strong>${advisory.level} | ${advisory.area}</strong>
                 <small>${advisory.message}</small><br>
-                <small>${formatDateTime(advisory.sentAtIso)}${advisory.createdByUserId ? ` · ${userLabel(advisory.createdByUserId)}` : ''}</small>
+                <small>${formatDateTime(advisory.sentAtIso)} · ${advisory.channel || 'Push'}${advisory.createdByUserId ? ` · ${userLabel(advisory.createdByUserId)}` : ''}</small>
             </div>
         </div>
     `).join('');
