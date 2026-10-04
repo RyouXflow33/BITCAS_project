@@ -35,7 +35,7 @@ function startGlobalVisionPoller() {
         const page = document.body.dataset.page;
         if (page === 'command') {
             const now = Date.now();
-            if (!window.__bitcasAdvisoryRefreshAt || now - window.__bitcasAdvisoryRefreshAt > 15000) {
+            if (!window.__bitcasAdvisoryRefreshAt || now - window.__bitcasAdvisoryRefreshAt > 5000) {
                 window.__bitcasAdvisoryRefreshAt = now;
                 await refreshAdvisories();
             }

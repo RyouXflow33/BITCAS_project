@@ -1,6 +1,6 @@
 # BITCAS Vision Python — how the monitoring node works
 
-This note is for reading the **v2** Python node, not the old v1 write-up under `vision/INFORMATION/`. Those files still mention vehicle-count thresholds and `index.html`. The live code is [`vision/traffic_vision.py`](../vision/traffic_vision.py).
+This note describes the live Python node in [`vision/traffic_vision.py`](../vision/traffic_vision.py).
 
 Vision is a **monitoring node**. It is not the LGU dashboard. It watches a camera or an MP4, measures traffic, and **writes files**. The PHP/JS UI never calls Python. It polls those files every 3 seconds.
 

@@ -37,7 +37,7 @@ The loose coupling is deliberate: either side can fail without crashing the othe
 ┌──────────────────────────┐         shared filesystem          ┌──────────────────────────────┐
 │      VISION NODE         │  ── congestion.json (live) ──────▶ │        WEB DASHBOARD         │
 │  traffic_vision.py       │  ── traffic_history.jsonl ──────▶  │  Apache/PHP (XAMPP)          │
-│  YOLOv8n / OpenCV        │  ── traffic_hourly.jsonl ───────▶  │  index.php + includes/*.php  │
+│  YOLOv8n / OpenCV        │  ── traffic_hourly.jsonl ───────▶  │  index.php + app/views/      │
 │  (Raspberry Pi target)   │  ── crossings.jsonl ────────────▶  │  Client MVC: assets/js/mvc/  │
 │                          │  ── assets/snapshots/ ──────────▶  │  State: browser localStorage │
 └──────────────────────────┘                                    └──────────────────────────────┘
@@ -100,14 +100,16 @@ the single biggest correctness problem in v1.
 
 ### 2.2 Web server (PHP)
 
-- [index.php](../index.php) — single entry point. Reads `?page=`, whitelists `['command', 'analytics', 'incidents', 'dispatch']` (defaults to `command`), maps page titles, includes the matching file from `includes/`, and loads all client-side MVC scripts in dependency order (core → models → views → controllers → app.js).
-- [includes/sidebar.php](../includes/sidebar.php) — navigation with live open-report badge (`reportNavCount`).
-- [includes/command.php](../includes/command.php) — Traffic Map page: stat cards, map panel, vision feed panel, advisory broadcast form, advisory timeline.
-- [includes/incidents.php](../includes/incidents.php) — Congested Reports page: searchable/filterable list + editor + resolve confirmation modal.
-- [includes/dispatch.php](../includes/dispatch.php) — Assign Officer page: open-report queue, officer pool, assignment tracking.
-- [includes/analytics.php](../includes/analytics.php) — Analytics page: KPI widgets, 7-day trend, hourly chart, hotspot ranking, class distribution, PDF export.
-- [includes/map.php](../includes/map.php) — shared Leaflet container + legend.
-- [includes/mobile.php](../includes/mobile.php) / [includes/optimized.php](../includes/optimized.php) — **static showcase pages, not wired into routing** (mock).
+- [index.php](../index.php) — front controller. Hands the request to `PageController`.
+- [app/controllers/PageController.php](../app/controllers/PageController.php) — whitelists `?page=` (`command`, `analytics`, `incidents`, `dispatch`, `accounts`) and renders [app/views/layout.php](../app/views/layout.php).
+- [app/controllers/AdvisoryController.php](../app/controllers/AdvisoryController.php) — broadcast and clear. The public URL stays [api/advisories.php](../api/advisories.php).
+- [app/models/AdvisoryStore.php](../app/models/AdvisoryStore.php) — reads and writes `assets/data/advisories.json`, then calls OneSignal.
+- [app/views/partials/sidebar.php](../app/views/partials/sidebar.php) — navigation with live open-report badge (`reportNavCount`).
+- [app/views/pages/command.php](../app/views/pages/command.php) — Traffic Map page: stat cards, map panel, vision feed panel, advisory broadcast form, advisory timeline.
+- [app/views/pages/incidents.php](../app/views/pages/incidents.php) — Congested Reports page: searchable/filterable list + editor + resolve confirmation modal.
+- [app/views/pages/dispatch.php](../app/views/pages/dispatch.php) — Assign Officer page: open-report queue, officer pool, assignment tracking.
+- [app/views/pages/analytics.php](../app/views/pages/analytics.php) — Analytics page: KPI widgets, 7-day trend, hourly chart, hotspot ranking, class distribution, PDF export.
+- [app/views/partials/map.php](../app/views/partials/map.php) — shared Leaflet container + legend.
 
 ### 2.3 Client MVC (`assets/js/mvc/`)
 
@@ -225,7 +227,6 @@ flowchart TD
 | "Simulate vision data" button | Cycles through 3 hardcoded `VISION_SIMULATION_SAMPLES` (LIGHT/MODERATE/HEAVY) — a demo path, not the vision node |
 | Snapshot capture | Generates an SVG placeholder card (`buildSnapshotSvgDataUrl`) until a real Pi camera frame stream exists |
 | OneSignal broadcast | Advisory form says "OneSignal flow" but no API call is made — advisories stay local |
-| `includes/mobile.php`, `includes/optimized.php` | Static showcase pages with hardcoded numbers; **not in the router** |
 | Speed values | Real km/h **only after** `calibrate.py` has been run at the site. Until then the payload sets `speed_calibrated: false` and the dashboard says "Not calibrated" instead of showing a pixel figure dressed up as a speed |
 | Intersection comparison | One camera, so the "Locations" ranking is scored from operator reports, not from vision. A second node makes it real; nothing in the model assumes a single site |
 | Forecast and anomaly baselines | Statistically sound but only as good as the history behind them. They need ~2 weeks of live capture from `traffic_vision.py` before they describe Villamonte |
@@ -316,9 +317,8 @@ flowchart TD
 - `capacity_vehicles` and `free_flow_kph` in `site_config.json` are placeholders until tuned against a week of real data
 - Centroid tracker can swap IDs under occlusion (counting-line dedup limits the damage)
 - Single camera / single intersection (Villamonte) only
-- `mobile.php` and `optimized.php` are static mockups, not functional pages
 
-**Planned (from INFORMATION docs)**
+**Planned**
 1. Real auth + user roles backed by a database
 2. OneSignal API integration for real advisory broadcasts
 3. Real Raspberry Pi frame streaming to replace SVG snapshots

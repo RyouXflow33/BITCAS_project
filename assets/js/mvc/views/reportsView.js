@@ -26,7 +26,7 @@ function renderReportsPage() {
 
     if (!reports.length) {
         cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py on the video. A case appears after HEAVY holds for 3 intervals and a snapshot is written.');
-        selectedReportId = null;
+        syncReportSelection([]);
         resetEditor();
         return;
     }
@@ -47,10 +47,7 @@ function renderReportsPage() {
         `;
     }).join('');
 
-    if (!selectedReportId || !reports.some((report) => report.id === selectedReportId)) {
-        selectedReportId = reports[0].id;
-    }
-    fillReportEditor(selectedReportId);
+    fillReportEditor(syncReportSelection(reports));
     highlightSelectedReport();
 }
 

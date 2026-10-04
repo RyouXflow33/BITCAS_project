@@ -624,6 +624,16 @@ function findReport(reportId) {
     return state.reports.find((item) => item.id === reportId);
 }
 
+function updateCameraReportNotes(reportId, notes) {
+    const report = findReport(reportId);
+    if (!report || !isCameraReport(report)) return null;
+    report.notes = notes;
+    report.updatedAtIso = new Date().toISOString();
+    report.updatedByUserId = currentActor().userId;
+    saveState();
+    return report;
+}
+
 function updateReport(reportId, fields) {
     const report = findReport(reportId);
     if (!report) return null;

@@ -90,6 +90,8 @@ function bindCommandActions() {
             const message = getValue('advisoryMessage');
             if (!level || !area || !message) return;
 
+            const button = advisoryForm.querySelector('button[type="submit"]');
+            if (button) button.disabled = true;
             setText('advisoryStatus', 'Sending…');
             try {
                 const result = await publishAdvisory({ level, area, message });
@@ -97,8 +99,20 @@ function bindCommandActions() {
                 setValue('advisoryArea', 'Villamonte Street Intersection');
                 setText('advisoryStatus', result.push?.sent ? 'Sent to driver phones' : (result.push?.reason || 'Saved'));
                 renderCommandPage();
+                const sentId = result.advisory && result.advisory.id;
+                window.setTimeout(async () => {
+                    if (document.body.dataset.page !== 'command') return;
+                    await refreshAdvisories();
+                    renderCommandPage();
+                    const latest = (state.advisories || []).find((item) => item.id === sentId);
+                    if (latest && latest.channel !== 'OneSignal') {
+                        setText('advisoryStatus', 'Saved on the desk. The phone push did not send.');
+                    }
+                }, 3000);
             } catch (error) {
                 setText('advisoryStatus', error.message || 'Broadcast failed');
+            } finally {
+                if (button) button.disabled = false;
             }
         });
     }

@@ -19,9 +19,9 @@ count into LIGHT / MODERATE / HEAVY. Every 3 seconds it atomically writes one JS
 After 3 consecutive HEAVY publishes it also saves an annotated JPEG to `assets/snapshots/` and
 puts the path in the payload as `snapshot_url`.
 
-**Web side** — `index.php` is the only entry point. It whitelists `?page=` to
-`command | analytics | incidents | dispatch`, includes the matching file from `includes/`, and
-loads the client MVC in dependency order. There is no server-side logic beyond includes.
+**Web side** — `index.php` is the front controller. `PageController` whitelists `?page=` to
+`command | analytics | incidents | dispatch | accounts` and renders the matching file from `app/views/pages/`.
+The browser then loads the client MVC in dependency order: core, models, views, controllers, `app.js`.
 
 **The browser is the database.** `assets/js/mvc/models/store.js` holds one `state` object in
 `localStorage` under `bitcas_ui_sim_v1` — reports, telemetry, officers, assignments, advisories,

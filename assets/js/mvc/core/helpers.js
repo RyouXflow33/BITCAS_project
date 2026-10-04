@@ -234,6 +234,14 @@ function formatDateTime(isoString) {
     return new Date(isoString).toLocaleString();
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 function getValue(id) {
     const el = document.getElementById(id);
     return el ? el.value.trim() : '';

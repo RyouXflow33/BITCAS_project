@@ -4,6 +4,17 @@ let reportStatusFilter = 'all';
 let reportSearchQuery = '';
 let selectedReportId = null;
 
+function syncReportSelection(reports) {
+    if (!reports.length) {
+        selectedReportId = null;
+        return null;
+    }
+    if (!selectedReportId || !reports.some((report) => report.id === selectedReportId)) {
+        selectedReportId = reports[0].id;
+    }
+    return selectedReportId;
+}
+
 function initReportsPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('report')) selectedReportId = params.get('report');
@@ -49,9 +60,7 @@ function bindReportActions() {
             if (!report) return;
 
             if (isCameraReport(report)) {
-                report.notes = getValue('editNotes');
-                report.updatedAtIso = new Date().toISOString();
-                saveState();
+                if (!updateCameraReportNotes(selectedReportId, getValue('editNotes'))) return;
             } else {
                 const updated = updateReport(selectedReportId, {
                     location: getValue('editLocation'),

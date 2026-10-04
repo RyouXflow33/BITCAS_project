@@ -127,21 +127,22 @@ function renderAdvisoryTimeline() {
     const target = document.getElementById('advisoryTimeline');
     if (!target) return;
 
-    if (!state.advisories.length) {
-        target.innerHTML = emptyState('inbox', 'No advisories yet', 'Broadcast a message when congestion needs a public notice.');
-        return;
-    }
-
-    target.innerHTML = state.advisories.slice(0, 8).map((advisory) => `
+    const html = !state.advisories.length
+        ? emptyState('inbox', 'No advisories yet', 'Broadcast a message when congestion needs a public notice.')
+        : state.advisories.slice(0, 8).map((advisory) => `
         <div>
             <i class="timeline-dot ${severityDotClass(advisory.level)}"></i>
             <div>
-                <strong>${advisory.level} | ${advisory.area}</strong>
-                <small>${advisory.message}</small><br>
-                <small>${formatDateTime(advisory.sentAtIso)} · ${advisory.channel || 'Push'}${advisory.createdByUserId ? ` · ${userLabel(advisory.createdByUserId)}` : ''}</small>
+                <strong>${escapeHtml(advisory.level)} | ${escapeHtml(advisory.area)}</strong>
+                <small>${escapeHtml(advisory.message)}</small><br>
+                <small>${escapeHtml(formatDateTime(advisory.sentAtIso))} · ${escapeHtml(advisory.channel || 'Push')}${advisory.createdByUserId ? ` · ${escapeHtml(userLabel(advisory.createdByUserId))}` : ''}</small>
             </div>
         </div>
     `).join('');
+
+    if (target.dataset.markup === html) return;
+    target.dataset.markup = html;
+    target.innerHTML = html;
 }
 
 function initLeafletMap() {
