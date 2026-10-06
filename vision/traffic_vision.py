@@ -1,4 +1,4 @@
-﻿"""
+"""
 BITCAS Traffic Vision System (v2)
 
 Detects and tracks vehicles from a camera or video file, counts each vehicle
@@ -33,6 +33,11 @@ import threading
 import time
 from collections import defaultdict, deque
 from datetime import datetime, date
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class _ReuseHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
 
 import cv2
 import numpy as np
@@ -247,6 +252,7 @@ class FrameGrabber:
 
         self._lock = threading.Lock()
         self._frame = None
+        self._latest = None
         self._stopped = False
         self._finished = False
         self._thread = None
@@ -262,6 +268,7 @@ class FrameGrabber:
                 break
             with self._lock:
                 self._frame = frame
+                self._latest = frame
 
     def read(self):
         if self.is_file:
@@ -269,11 +276,21 @@ class FrameGrabber:
             if not ok:
                 self._finished = True
                 return None
+            with self._lock:
+                self._latest = frame
             return frame
         with self._lock:
             frame = self._frame
             self._frame = None
         return frame
+
+    def latest(self):
+        """Copy of the newest frame. Does not take the frame away from read()."""
+        with self._lock:
+            frame = self._latest
+            if frame is None:
+                return None
+            return frame.copy()
 
     @property
     def finished(self):
@@ -284,6 +301,72 @@ class FrameGrabber:
         if self._thread is not None:
             self._thread.join(timeout=1.0)
         self.capture.release()
+
+
+class LivePreview:
+    """
+    Serves the grabber's newest frame on one port.
+
+    The camera stays owned by FrameGrabber. This only copies frames, so YOLO
+    and the laptop page can run in the same process.
+    """
+
+    _PAGE = b"""<!doctype html>
+<title>BITCAS Camera</title>
+<img src="/stream" style="width:100%;max-width:960px">
+"""
+
+    def __init__(self, grabber, port, host='0.0.0.0'):
+        self.grabber = grabber
+        self.port = int(port)
+        self._stopped = False
+        handler = self._handler()
+        self.httpd = _ReuseHTTPServer((host, self.port), handler)
+        self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self._thread.start()
+        print(f"Live view on port {self.port}")
+        print(f"On the laptop open http://100.103.30.96:{self.port}")
+
+    def _handler(self):
+        preview = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path.startswith('/stream'):
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+                    self.send_header('Cache-Control', 'no-store')
+                    self.end_headers()
+                    while not preview._stopped:
+                        frame = preview.grabber.latest()
+                        if frame is None:
+                            time.sleep(0.05)
+                            continue
+                        ok, jpg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+                        if not ok:
+                            time.sleep(0.05)
+                            continue
+                        try:
+                            self.wfile.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpg.tobytes() + b'\r\n')
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            break
+                        time.sleep(0.1)
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html')
+                self.end_headers()
+                self.wfile.write(preview._PAGE)
+
+            def log_message(self, *args):
+                pass
+
+        return Handler
+
+    def stop(self):
+        self._stopped = True
+        self.httpd.shutdown()
+        self.httpd.server_close()
 
 
 # --------------------------------------------------------------------------
@@ -702,12 +785,14 @@ class TrafficVisionSystem:
     def __init__(self, video_source=0, config_file=DEFAULT_CONFIG_FILE,
                  output_file=DEFAULT_CONGESTION_FILE, backend='auto',
                  inference_size=416, confidence_threshold=0.5, detect_every=1,
-                 update_interval=None):
+                 update_interval=None, stream_port=0):
         self.config = load_site_config(config_file)
         publish = self.config['publish']
 
         self.video_source = video_source
         self.detect_every = max(1, int(detect_every))
+        self.stream_port = int(stream_port or 0)
+        self.preview = None
         self.update_interval = float(update_interval or publish['update_interval_seconds'])
         self.history_interval = float(publish['history_interval_seconds'])
         self.snapshot_cooldown = float(publish['snapshot_cooldown_seconds'])
@@ -772,6 +857,14 @@ class TrafficVisionSystem:
             print(f"Capture ready at {width}x{height} | video file {self.grabber.fps:.1f} FPS (realtime playback)")
         else:
             print(f"Capture ready at {width}x{height} | live camera (drop stale frames)")
+        if self.stream_port:
+            try:
+                self.preview = LivePreview(self.grabber, self.stream_port)
+            except OSError as exc:
+                raise OSError(
+                    f"Cannot open live view on port {self.stream_port}. "
+                    "Stop camera_stream.py if it is still running."
+                ) from exc
         return frame
 
     def _build_geometry(self, width, height):
@@ -1169,6 +1262,9 @@ class TrafficVisionSystem:
         self._flush_hourly(force=True)
 
     def cleanup(self):
+        if self.preview:
+            self.preview.stop()
+            self.preview = None
         if self.grabber:
             self.grabber.release()
         cv2.destroyAllWindows()
@@ -1192,6 +1288,8 @@ def main():
     parser.add_argument('--threads', type=int, default=0,
                         help='OpenCV thread cap. Set to 3 on a Pi so the video stream keeps a core')
     parser.add_argument('--no-display', action='store_true', help='Headless mode')
+    parser.add_argument('--stream-port', type=int, default=0,
+                        help='Serve the same camera on this port, for example 8080. 0 leaves the page off')
     parser.add_argument('--pi', action='store_true',
                         help='Raspberry Pi 5 4GB preset: NCNN, 320px, detect every 2nd frame, 3 OpenCV threads, headless')
     args = parser.parse_args()
@@ -1225,7 +1323,8 @@ def main():
         inference_size=args.inference_size,
         confidence_threshold=args.confidence,
         detect_every=args.detect_every,
-        update_interval=args.update_interval
+        update_interval=args.update_interval,
+        stream_port=args.stream_port
     )
     system.run(display_output=not args.no_display)
 

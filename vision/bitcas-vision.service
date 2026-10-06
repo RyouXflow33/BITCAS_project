@@ -1,0 +1,19 @@
+[Unit]
+Description=BITCAS traffic vision and live camera
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ianpajarito
+Group=ianpajarito
+SupplementaryGroups=video plugdev
+WorkingDirectory=/home/ianpajarito/BITCAS/vision
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/ianpajarito/miniforge3/envs/bitcas/bin/python -u traffic_vision.py --source 0 --backend pytorch --no-display --stream-port 8080
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
