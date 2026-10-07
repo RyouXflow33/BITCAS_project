@@ -2,10 +2,6 @@
     <div>
         <span class="section-kicker"><?= icon('map') ?> Live camera map</span>
     </div>
-    <div class="head-actions">
-        <button class="btn ghost" id="simulateTickBtn"><?= icon('play') ?> Simulate vision data</button>
-        <button class="btn primary" id="captureSnapshotBtn"><?= icon('camera') ?> Capture snapshot</button>
-    </div>
 </section>
 
 <div class="camera-banner" id="cameraBanner" hidden></div>
@@ -40,11 +36,11 @@
     </section>
 
     <section class="panel snapshot-panel">
-        <div class="panel-head"><div><h2><?= icon('camera') ?> Vision feed</h2><span id="visionSource">Simulation</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('camera') ?> Vision feed</h2><span id="visionSource">Waiting</span></div></div>
         <div class="snapshot-preview" id="snapshotPreview">
-            <div class="snapshot-placeholder"><?= icon('camera-off') ?><span>No camera frame yet</span></div>
+            <div class="snapshot-placeholder"><?= icon('camera-off') ?><span>No evidence still yet</span></div>
         </div>
-        <div class="snapshot-meta" id="snapshotMeta">Last snapshot: none</div>
+        <div class="snapshot-meta" id="snapshotMeta">A still is saved after HEAVY holds for 3 readings</div>
         <div class="vision-summary">
             <span id="visionVehicles">In frame: --</span>
             <span id="visionOccupancy">Road occupancy: --</span>

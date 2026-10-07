@@ -52,8 +52,8 @@ function renderCameraBanner() {
 
     banner.hidden = false;
     if (!isVision) {
-        banner.dataset.state = 'simulated';
-        banner.innerHTML = `${icon('zap')}<div><strong>Simulated data</strong><span>No vision node detected. Numbers on this page are not from a camera.</span></div>`;
+        banner.dataset.state = 'offline';
+        banner.innerHTML = `${icon('offline')}<div><strong>No camera reading yet</strong><span>The desk is waiting for congestion.json from the Pi.</span></div>`;
         return;
     }
 
@@ -92,33 +92,38 @@ function renderVisionSummary() {
 }
 
 function renderVisionSource(source) {
-    setText('visionSource', source === 'traffic_vision_system' ? 'Vision JSON' : 'Simulation');
+    setText('visionSource', source === 'traffic_vision_system' ? 'Live camera' : 'Waiting');
 }
 
 function renderSnapshotPanel() {
-    const latest = state.snapshots[0] || null;
+    const payload = state.live.visionPayload || {};
+    const shots = evidenceReports();
+    const latestUrl = payload.snapshot_url || (shots[0] && shots[0].snapshotUrl) || '';
     const preview = document.getElementById('snapshotPreview');
     const meta = document.getElementById('snapshotMeta');
     const list = document.getElementById('snapshotList');
     if (!preview || !meta || !list) return;
 
-    if (!latest) {
-        preview.innerHTML = `<div class="snapshot-placeholder">${icon('camera-off')}<span>No camera frame yet</span></div>`;
-        meta.textContent = 'Last snapshot: none';
+    if (!latestUrl) {
+        preview.innerHTML = `<div class="snapshot-placeholder">${icon('camera-off')}<span>No evidence still yet</span></div>`;
+        meta.textContent = 'A still is saved after HEAVY holds for 3 readings';
     } else {
-        preview.innerHTML = `<img src="${latest.image}" alt="Simulated camera snapshot">`;
-        meta.textContent = `Last snapshot: ${formatDateTime(latest.capturedAtIso)} | ${latest.severity}`;
+        preview.innerHTML = `<img src="${latestUrl}" alt="Traffic evidence still">`;
+        const latestReport = shots.find((report) => report.snapshotUrl === latestUrl);
+        meta.textContent = latestReport
+            ? `Last still: ${formatDateTime(latestReport.createdAtIso)} | ${latestReport.severity}`
+            : 'Last still: saved with the live reading';
     }
 
-    if (!state.snapshots.length) {
-        list.innerHTML = emptyState('camera', 'No stored snapshots', 'Capture a snapshot from the live map when you need a still frame.');
+    if (!shots.length) {
+        list.innerHTML = emptyState('camera', 'No evidence stills', 'After HEAVY holds for 3 readings, the Pi saves a JPEG and a report opens here.');
         return;
     }
 
-    list.innerHTML = state.snapshots.slice(0, 5).map((shot) => `
+    list.innerHTML = shots.slice(0, 5).map((report) => `
         <div class="snapshot-item">
-            <strong>${shot.severity} (${shot.score}%)</strong>
-            <small>${formatDateTime(shot.capturedAtIso)}</small>
+            <strong>${report.severity} (${report.congestionScore}%)</strong>
+            <small>${formatDateTime(report.createdAtIso)}</small>
         </div>
     `).join('');
 }

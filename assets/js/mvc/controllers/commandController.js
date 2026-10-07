@@ -1,7 +1,5 @@
 // MVC - Controller: Traffic Map (command) page events and vision polling.
 
-let simulationSampleIndex = 0;
-
 function initCommandPage() {
     initLeafletMap();
     bindLayerChips();
@@ -64,23 +62,6 @@ function syncMapFullscreen(button, panel) {
 }
 
 function bindCommandActions() {
-    const simulateBtn = document.getElementById('simulateTickBtn');
-    if (simulateBtn) {
-        simulateBtn.addEventListener('click', () => {
-            runVisionSimulationTick();
-            renderCommandPage();
-            renderGlobalCounters();
-        });
-    }
-
-    const captureBtn = document.getElementById('captureSnapshotBtn');
-    if (captureBtn) {
-        captureBtn.addEventListener('click', () => {
-            captureSnapshotRecord();
-            renderCommandPage();
-        });
-    }
-
     const advisoryForm = document.getElementById('advisoryForm');
     if (advisoryForm) {
         advisoryForm.addEventListener('submit', async (event) => {
@@ -139,20 +120,6 @@ async function refreshVisionFeed() {
         renderCommandPage();
         renderGlobalCounters();
     } catch (error) {
-        renderVisionSource('Simulation fallback');
+        renderVisionSource((state.live.visionPayload || {}).source || '');
     }
-}
-
-function runVisionSimulationTick() {
-    const sample = VISION_SIMULATION_SAMPLES[simulationSampleIndex % VISION_SIMULATION_SAMPLES.length];
-    simulationSampleIndex += 1;
-    applyVisionPayload({
-        ...sample,
-        timestamp: new Date().toISOString(),
-        source: 'bitcas_simulation',
-        camera_id: sample.camera_id || 'CAM-VILLAMONTE-01',
-        site_name: sample.site_name || 'Villamonte Street Intersection',
-        lat: CAMERA_SITE.lat,
-        lng: CAMERA_SITE.lng
-    }, 'bitcas_simulation');
 }

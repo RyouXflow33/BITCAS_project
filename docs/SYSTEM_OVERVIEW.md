@@ -115,15 +115,15 @@ the single biggest correctness problem in v1.
 
 | Layer | File | Responsibility |
 |---|---|---|
-| Core | [constants.js](../assets/js/mvc/core/constants.js) | Storage keys, JSON URLs, poll interval (3 s), Villamonte road GeoJSON, simulation samples |
+| Core | [constants.js](../assets/js/mvc/core/constants.js) | Storage keys, JSON URLs, poll interval (3 s), Villamonte road GeoJSON, history start cutoff |
 | Core | [helpers.js](../assets/js/mvc/core/helpers.js) | Formatting, severity/classification mapping, `isValidVisionPayload()`, DOM helpers |
-| Model | [store.js](../assets/js/mvc/models/store.js) | Single `state` object in localStorage (`bitcas_ui_sim_v1`); auth session; `fetchVisionFeed()` / `fetchVisionHistory()`; `applyVisionPayload()`; `maybeCreateEvidenceReport()`; snapshots; advisories |
+| Model | [store.js](../assets/js/mvc/models/store.js) | Single `state` object in localStorage (`bitcas_ui_ops_v1`); auth session; `fetchVisionFeed()` / `fetchVisionHistory()`; `applyVisionPayload()`; `maybeCreateEvidenceReport()`; advisories |
 | Model | [analyticsModel.js](../assets/js/mvc/models/analyticsModel.js) | `computeAnalytics()` — rolling/baseline averages, congestion duration, week trend, resolution time, 7-day trend, peak hour, hotspots, class counts |
 | Views | `authView.js`, `commandView.js`, `analyticsView.js`, `reportsView.js`, `dispatchView.js` | Pure DOM rendering; Leaflet map layers; jsPDF export |
 | Controllers | `authController.js`, `commandController.js`, `analyticsController.js`, `reportsController.js`, `dispatchController.js` | Event binding, interaction state, vision polling loop |
 | Bootstrap | [app.js](../assets/js/mvc/app.js) | `DOMContentLoaded` → sidebar → `initAuth()` → `bootSession()` → page controller by `body[data-page]` |
 
-**State model**: all app data (reports, telemetry, officers, assignments, advisories, snapshots, live feed) lives in one localStorage object, seeded on first run. No server-side persistence.
+**State model**: reports, officers, assignments, and the live reading live in one localStorage object. A first super admin is created when storage is empty. Advisories are the shared `advisories.json` file. No MySQL yet.
 
 ---
 
@@ -141,13 +141,13 @@ flowchart LR
     E --> F
     F --> G[Smooth count, classify LIGHT/MODERATE/HEAVY]
     G --> H[Atomic write congestion.json]
-    G --> I[Append traffic_history.json max 1000]
-    G --> J[Snapshot on HEAVY 15-min cooldown]
+    G --> I[Append traffic_history.jsonl one line per minute]
+    G --> J[JPEG after 3 HEAVY publishes, 15-min cooldown]
 
     H --> K[Web: fetchVisionFeed every 3 s]
     K --> L{isValidVisionPayload?}
-    L -- no --> M[Show Simulation fallback label]
-    L -- yes --> N[applyVisionPayload updates state.live + telemetry]
+    L -- no --> M[Show camera offline / waiting]
+    L -- yes --> N[applyVisionPayload updates state.live]
     N --> O{HEAVY + snapshot_url?}
     O -- yes --> P[maybeCreateEvidenceReport: new Open Severe RPT]
     O -- no --> Q[renderCommandPage]
@@ -159,16 +159,14 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    L[Login overlay lguadmin/bitcas123] --> S[bootSession: load localStorage state]
+    L[Login overlay] --> S[bootSession: load localStorage state]
     S --> P{Page}
     P --> C[Traffic Map]
     P --> R[Congested Reports]
     P --> D[Assign Officer]
     P --> A[Analytics]
 
-    C --> C1[Simulate vision data tick]
-    C --> C2[Capture snapshot: SVG placeholder]
-    C --> C3[Broadcast advisory form to timeline]
+    C --> C3[Broadcast advisory to phones]
 
     R --> R1[Search / status filter]
     R --> R2[Create manual report]
@@ -179,7 +177,7 @@ flowchart TD
     D --> D2[Assign available officer: creates DSP record]
     D --> D3[Resolve assignment: report marked Resolved]
 
-    A --> A1[Load traffic_history.json: VISION tag or SIM fallback]
+    A --> A1[Load traffic_history.jsonl: VISION tag, or NO FILE]
     A --> A2[computeAnalytics renders widgets/charts]
     A --> A3[Export LGU PDF via jsPDF]
 ```
@@ -187,10 +185,10 @@ flowchart TD
 ### 3.3 Data lifecycle
 
 - **Live**: `congestion.json` polled every `VISION_POLL_MS = 3000`; new telemetry entries appended (capped at 240 in state); dashboard re-renders. A payload older than `VISION_STALE_MS` (30 s) raises the **camera offline** banner.
-- **History**: `traffic_history.jsonl` is loaded first and parsed line by line; the legacy `traffic_history.json` array is the fallback, so data captured before v2 still renders. Capped at `VISION_HISTORY_MAX_ENTRIES` (2,880 ≈ 2 days of minute aggregates). The source tag reads **VISION**, **SAMPLE DATA** or **SIM** depending on what actually produced the records.
+- **History**: `traffic_history.jsonl` only. Lines before `2026-10-07T15:33:00`, and any line whose in-frame count reaches 30, are skipped. Those minutes are the broken PyTorch run. Capped at `VISION_HISTORY_MAX_ENTRIES` (2,880 ≈ 2 days). The source tag reads **VISION**, **SAMPLE DATA**, or **NO FILE**.
 - **Hourly rollups**: `traffic_hourly.jsonl` is fetched alongside the minute history and capped at `VISION_HOURLY_MAX_ENTRIES` (1,440 ≈ 2 months). It is derived, read-only data, so it is held in memory instead of localStorage. The heatmap, the anomaly baselines and the forecast all read this; none of them touch the minute file for history.
-- **Reports**: seeded RPT-1042…1045 + auto-created evidence reports (HEAVY + snapshot, deduplicated by `snapshotUrl`, capped at 120) + manual reports.
-- **Persistence**: every mutation calls `saveState()` → localStorage. Clearing browser storage resets to seeds.
+- **Reports**: start empty. A case is opened when the live payload is HEAVY and carries `snapshot_url` (deduplicated by that URL, capped at 120), or when an operator creates one.
+- **Persistence**: desk mutations call `saveState()` → localStorage. Clearing browser storage keeps the login account and drops local reports. The Pi files are unchanged.
 
 ---
 
@@ -216,21 +214,18 @@ flowchart TD
 | Officer assignment + resolution tracking | [dispatchController.js](../assets/js/mvc/controllers/dispatchController.js), [dispatchView.js](../assets/js/mvc/views/dispatchView.js) |
 | Analytics: rolling vs baseline average, congestion duration, week-over-week trend, resolution time, 7-day trend, peak hour, hotspots, class distribution | [analyticsModel.js](../assets/js/mvc/models/analyticsModel.js) |
 | LGU PDF export — page 1 summary/hotspots/classifications, page 2 detected anomalies + forecast + historical basis | `exportAnalyticsPdf`, `appendForecastPage` in [analyticsView.js](../assets/js/mvc/views/analyticsView.js) |
-| Advisory broadcast form → timeline, persisted | `addAdvisory` in [store.js](../assets/js/mvc/models/store.js) |
+| Advisory broadcast → `advisories.json` and OneSignal | `publishAdvisory` in [store.js](../assets/js/mvc/models/store.js), [AdvisoryController.php](../app/controllers/AdvisoryController.php) |
 
-### 🟡 Mock / placeholder (by design, still in the UI)
+### 🟡 Still unfinished (not mock traffic)
 
 | Item | Status |
 |---|---|
-| Authentication | Client-side only; hardcoded `lguadmin/bitcas123` (also `admin/admin123`) in `isValidCredential`; session in localStorage |
-| Seed data | Reports RPT-1042…1045, 4 officers, DSP-060, and 24 h of randomized telemetry are generated by `buildDefaultState()` / `seedTelemetry()` |
-| "Simulate vision data" button | Cycles through 3 hardcoded `VISION_SIMULATION_SAMPLES` (LIGHT/MODERATE/HEAVY) — a demo path, not the vision node |
-| Snapshot capture | Generates an SVG placeholder card (`buildSnapshotSvgDataUrl`) until a real Pi camera frame stream exists |
-| OneSignal broadcast | Advisory form says "OneSignal flow" but no API call is made — advisories stay local |
-| Speed values | Real km/h **only after** `calibrate.py` has been run at the site. Until then the payload sets `speed_calibrated: false` and the dashboard says "Not calibrated" instead of showing a pixel figure dressed up as a speed |
-| Intersection comparison | One camera, so the "Locations" ranking is scored from operator reports, not from vision. A second node makes it real; nothing in the model assumes a single site |
-| Forecast and anomaly baselines | Statistically sound but only as good as the history behind them. They need ~2 weeks of live capture from `traffic_vision.py` before they describe Villamonte |
-| Backend persistence | None — all state is browser localStorage |
+| Authentication | Client-side accounts in localStorage until MySQL. A super admin is created on first run |
+| Speed values | Real km/h **only after** `calibrate.py` has been run at the site. Until then the payload sets `speed_calibrated: false` and the dashboard says speed is off |
+| Counting line and ROI | The yellow line and the full-frame area are still the uncalibrated placeholders in `site_config.json` |
+| Intersection comparison | One camera, so a location ranking is this site only |
+| Forecast and anomaly baselines | They need about two weeks of live capture before they describe Villamonte. History before 15:33 on 7 Oct 2026 is excluded |
+| Desk persistence | Reports, officers, and assignments are browser localStorage. The live reading and the history files are on disk |
 
 ---
 
@@ -246,7 +241,7 @@ flowchart TD
 | V4 | Schema check on `congestion.json` | All contract fields present; `congestion_level` ∈ {LIGHT, MODERATE, HEAVY}; numbers finite |
 | V5 | Threshold boundaries: feed scenes with 4 / 5 / 14 / 15 vehicles | LIGHT→MODERATE at 5, MODERATE→HEAVY at 15 (after smoothing window) |
 | V6 | Atomic write: poll file from another process during heavy write load | No partial/corrupt JSON reads |
-| V7 | History cap: long run | `traffic_history.json` stays ≤ 1,000 entries |
+| V7 | History file | `traffic_history.jsonl` gains one line per minute; the desk ignores lines before 15:33 on 7 Oct 2026 |
 | V8 | YOLO unavailable (uninstall ultralytics) | Warning printed, Haar fallback still produces payloads |
 | V9 | HEAVY + snapshot: sustain heavy traffic | Snapshot lands in `assets/snapshots/`; cooldown prevents spam (15 min) |
 
@@ -259,13 +254,12 @@ flowchart TD
 
 **Traffic Map (`?page=command`)**
 - [ ] Stat cards update when the vision poller ticks (vehicle count, score, class, last sync)
-- [ ] Vision source label shows "Vision JSON" when reading the file, "Simulation fallback" when the file is missing/invalid
+- [ ] Vision source label shows "Live camera" when `congestion.json` is fresh, and "Waiting" when it is missing
+- [ ] A stale reading shows the camera-offline banner
 - [ ] Layer chips toggle road / detections / camera layers
 - [ ] Detection dots move along the road per `positions` fractions
-- [ ] "Simulate vision data" cycles LIGHT → MODERATE → HEAVY and recolors the road
-- [ ] HEAVY + `snapshot_url` auto-creates a new Severe report (check nav badge increments)
-- [ ] "Capture snapshot" renders an SVG preview and adds to the snapshot list
-- [ ] Advisory form adds to the timeline; Clear empties it
+- [ ] HEAVY + `snapshot_url` auto-creates a new report (check nav badge increments)
+- [ ] Advisory form adds to the timeline and can reach driver phones; Clear empties it
 
 **Congested Reports (`?page=incidents`)**
 - [ ] Search and status filter combine correctly
@@ -282,7 +276,7 @@ flowchart TD
 - [ ] Shift clock ticks every second
 
 **Analytics (`?page=analytics`)**
-- [ ] Source tag shows VISION when `traffic_history.json` loads, SIM when it doesn't
+- [ ] Source tag shows VISION when `traffic_history.jsonl` loads, NO FILE when it doesn't
 - [ ] Widgets render: rolling avg, baseline, delta, duration, week trend, resolution time
 - [ ] 7-day chart and hourly chart render bars; empty history shows "No data"
 - [ ] Hotspot ranking and class distribution match report data
@@ -292,11 +286,11 @@ flowchart TD
 
 | # | Test | Expected |
 |---|---|---|
-| D1 | Clear localStorage, reload | `buildDefaultState()` reseeds; app still boots |
-| D2 | Corrupt `congestion.json` (invalid level / non-numeric count) | `isValidVisionPayload` rejects it; UI shows fallback, no crash |
-| D3 | Missing `traffic_history.json` | Analytics falls back to simulation, tag = SIM |
+| D1 | Clear localStorage, reload | Desk boots with the super admin and empty reports |
+| D2 | Corrupt `congestion.json` (invalid level / non-numeric count) | `isValidVisionPayload` rejects it; UI shows waiting, no crash |
+| D3 | Missing `traffic_history.jsonl` | Analytics tag = NO FILE |
 | D4 | Duplicate `snapshot_url` payloads | No duplicate evidence reports |
-| D5 | Telemetry growth | State telemetry capped at 240; reports capped at 120; snapshots capped at 20 |
+| D5 | Telemetry growth | Live buffer capped at 240; reports capped at 120 |
 
 ### 5.4 Cross-cutting
 
@@ -310,20 +304,19 @@ flowchart TD
 ## 6. Known Limitations & Future Work
 
 **Current limitations**
-- No database or backend API — all persistence is browser localStorage; multi-operator state is not shared
-- Authentication is cosmetic (client-side check only)
-- OneSignal push is not wired; advisories never leave the browser
-- Speed is km/h **only after** running `calibrate.py` mode 3; until then the UI says "Not calibrated" rather than showing a pixel figure
-- `capacity_vehicles` and `free_flow_kph` in `site_config.json` are placeholders until tuned against a week of real data
+- Reports, officers, and assignments are browser localStorage; two desks do not share those
+- Authentication is client-side until MySQL
+- Speed is km/h **only after** running `calibrate.py`; until then the UI leaves speed off
+- The ROI, counting line, and speed rectangle are not calibrated yet
+- `capacity_vehicles` and `free_flow_kph` in `site_config.json` stay as starting values until a week of real data
 - Centroid tracker can swap IDs under occlusion (counting-line dedup limits the damage)
 - Single camera / single intersection (Villamonte) only
+- History before 15:33 on 7 Oct 2026 is excluded from Analytics because the PyTorch detector on the Pi was numerically wrong
 
 **Planned**
-1. Real auth + user roles backed by a database
-2. OneSignal API integration for real advisory broadcasts
-3. Real Raspberry Pi frame streaming to replace SVG snapshots
-4. Kalman filter or DeepSORT tracking for ID retention
-5. Speed calibration to real-world units; direction tracking; lane detection
-6. HTTP API / WebSocket push to replace 3-second file polling
-7. CSV/JSON analytics export and scheduled summary reports
-8. Predictive congestion modeling and multi-camera fusion
+1. Real auth + user roles backed by MySQL
+2. Calibrate the ROI, counting line, and speed rectangle on the Pi
+3. Kalman filter or DeepSORT tracking for ID retention
+4. HTTP API / WebSocket push to replace 3-second file polling
+5. Scheduled summary reports
+6. Multi-camera fusion

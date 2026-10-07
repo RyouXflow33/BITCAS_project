@@ -20,7 +20,7 @@ function saveState() {
 function buildDefaultState() {
     const nowIso = new Date().toISOString();
     return {
-        version: 2,
+        version: 3,
         nextReportNumber: 1,
         nextAssignmentNumber: 1,
         live: {
@@ -60,6 +60,18 @@ function ensureStateShape(s) {
         if (typeof report.falsePositive !== 'boolean') report.falsePositive = false;
         if (!report.resolvedAtIso && report.status === 'Resolved') report.resolvedAtIso = report.updatedAtIso || report.createdAtIso || null;
     });
+    // Older desks kept a drawn "pending integration" card and a few simulated ticks.
+    if (!s.version || s.version < 3) {
+        s.snapshots = (s.snapshots || []).filter((shot) => {
+            const image = String((shot && shot.image) || '');
+            return image && !image.startsWith('data:');
+        });
+        s.telemetry = [];
+        s.liveTelemetry = (s.liveTelemetry || []).filter((point) => {
+            return !point.speedCalibrated && Number(point.vehicleCount) < VISION_MAX_IN_FRAME;
+        });
+        s.version = 3;
+    }
 }
 
 function normalizeOfficer(officer) {
@@ -304,18 +316,18 @@ async function fetchVisionFeed() {
     return response.json();
 }
 
-// v2 writes append-only JSONL (one aggregated record per minute). v1 wrote a
-// JSON array. Try the new format first so a Pi running v2 wins, then fall back
-// so history captured before the rewrite still renders.
 async function fetchVisionHistory() {
-    const jsonl = await fetchVisionHistoryJsonl();
-    if (jsonl.length) return jsonl;
+    return fetchVisionHistoryJsonl();
+}
 
-    const response = await fetch(`${VISION_HISTORY_URL}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Vision history unavailable (${response.status})`);
-    const history = await response.json();
-    if (!Array.isArray(history)) throw new Error('Vision history must be an array');
-    return history;
+function isKeptVisionRecord(record, start) {
+    if (!record || !record.timestamp) return false;
+    if (String(record.timestamp) < start) return false;
+    const peak = Number(record.vehicles_in_frame_peak);
+    const average = Number(record.vehicles_in_frame_avg);
+    if (Number.isFinite(peak) && peak >= VISION_MAX_IN_FRAME) return false;
+    if (Number.isFinite(average) && average >= VISION_MAX_IN_FRAME) return false;
+    return true;
 }
 
 async function fetchVisionHistoryJsonl() {
@@ -373,7 +385,7 @@ function getVisionHistoryRecords() {
 }
 
 function normalizeHourlyEntry(record) {
-    if (!record || !record.timestamp) return null;
+    if (!isKeptVisionRecord(record, VISION_HOURLY_START)) return null;
     const when = new Date(record.timestamp);
     if (Number.isNaN(when.getTime())) return null;
 
@@ -456,8 +468,7 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
 }
 
 function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
-    // Only the live vision node may open a case. Simulate-button ticks
-    // (`bitcas_simulation`) and leftover sample rows (`sample_generator`) must not.
+    // Only the live vision node may open a case.
     if ((payload.source || '') !== 'traffic_vision_system') return;
     const isHeavy = normalizeVisionLevel(payload.congestion_level) === 'HEAVY';
     if (!payload.snapshot_url || !isHeavy) return;
@@ -493,7 +504,8 @@ function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
 
 // Accepts both a v2 aggregated history record and a raw v1 payload.
 function normalizeVisionHistoryEntry(record) {
-    if (!record || !VISION_LEVELS[record.congestion_level]) return null;
+    if (!isKeptVisionRecord(record, VISION_HISTORY_START)) return null;
+    if (!VISION_LEVELS[record.congestion_level]) return null;
 
     const isAggregate = Number.isFinite(Number(record.vehicles_in_frame_avg));
     const vehicleCount = isAggregate
@@ -521,44 +533,11 @@ function normalizeVisionHistoryEntry(record) {
     };
 }
 
-// --- Snapshot model ---
-
-function captureSnapshotRecord() {
-    const score = state.live.congestionScore;
-    const severity = classifyCongestion(score);
-    const ts = new Date().toISOString();
-    const vehicle = state.live.currentVehicleCount;
-
-    state.snapshots.unshift({
-        id: `SNP-${Date.now()}`,
-        capturedAtIso: ts,
-        severity,
-        score,
-        image: buildSnapshotSvgDataUrl({ severity, score, vehicle })
+function evidenceReports() {
+    return (state.reports || []).filter((report) => {
+        const url = String(report.snapshotUrl || '');
+        return url && !url.startsWith('data:');
     });
-    state.snapshots = state.snapshots.slice(0, 20);
-    saveState();
-}
-
-function buildSnapshotSvgDataUrl({ severity, score, vehicle }) {
-    const palette = {
-        Low: '#2f9e73',
-        Moderate: '#54a67f',
-        High: '#b58b3a',
-        Severe: '#b44e58'
-    };
-    const color = palette[severity] || '#54a67f';
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='700' height='420'>
-<rect width='700' height='420' fill='#f3f4f7'/>
-<rect x='24' y='24' width='652' height='372' rx='10' fill='white' stroke='#d3d8e2' stroke-width='2'/>
-<text x='48' y='78' fill='#1e2430' font-size='28' font-family='Segoe UI, Arial'>BITCAS SNAPSHOT</text>
-<text x='48' y='128' fill='#5a6679' font-size='20' font-family='Segoe UI, Arial'>Villamonte Street Intersection</text>
-<text x='48' y='178' fill='${color}' font-size='22' font-family='Segoe UI, Arial'>Congestion: ${severity} (${score}%)</text>
-<text x='48' y='220' fill='#5a6679' font-size='20' font-family='Segoe UI, Arial'>Vehicles: ${vehicle}</text>
-<text x='48' y='262' fill='#5a6679' font-size='18' font-family='Segoe UI, Arial'>Captured: ${new Date().toLocaleString()}</text>
-<text x='48' y='330' fill='#7a8598' font-size='16' font-family='Segoe UI, Arial'>Pending integration: Raspberry Pi + Python vision stream</text>
-</svg>`;
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 // --- Advisory model ---

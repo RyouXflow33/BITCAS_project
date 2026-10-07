@@ -42,9 +42,7 @@ async function refreshVisionHistory() {
         applyHistorySourceTag(history);
         return true;
     } catch (error) {
-        // Seeded telemetry stays in place so the page still renders, but the
-        // tag must make clear none of it came from a camera.
-        setTag('SIM', 'warning');
+        setTag('NO FILE', 'warning');
         return false;
     }
 }

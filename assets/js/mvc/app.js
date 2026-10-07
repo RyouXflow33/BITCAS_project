@@ -29,7 +29,7 @@ function startGlobalVisionPoller() {
             applyVisionPayload(payload, 'traffic_vision_system');
             if (document.body.dataset.page === 'command') renderVisionSource('Vision JSON');
         } catch (error) {
-            if (document.body.dataset.page === 'command') renderVisionSource('Simulation fallback');
+            if (document.body.dataset.page === 'command') renderVisionSource((state.live.visionPayload || {}).source || '');
         }
         renderGlobalCounters();
         const page = document.body.dataset.page;
