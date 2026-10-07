@@ -10,7 +10,7 @@ Group=ianpajarito
 SupplementaryGroups=video plugdev
 WorkingDirectory=/home/ianpajarito/BITCAS/vision
 ExecStartPre=/bin/sleep 5
-ExecStart=/home/ianpajarito/miniforge3/envs/bitcas/bin/python -u traffic_vision.py --source 0 --backend pytorch --no-display --stream-port 8080
+ExecStart=/home/ianpajarito/miniforge3/envs/bitcas/bin/python -u traffic_vision.py --source 0 --backend ncnn --inference-size 416 --no-display --stream-port 8080 --confidence 0.25
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

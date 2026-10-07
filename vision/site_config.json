@@ -22,8 +22,8 @@
     {
       "id": "main",
       "calibrated": false,
-      "start": [0.05, 0.55],
-      "end": [0.95, 0.55],
+      "start": [0.05, 0.68],
+      "end": [0.95, 0.68],
       "positive_direction": "inbound",
       "negative_direction": "outbound"
     }

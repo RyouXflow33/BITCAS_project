@@ -305,10 +305,11 @@ class FrameGrabber:
 
 class LivePreview:
     """
-    Serves the grabber's newest frame on one port.
+    Serves frames on one port without opening the camera a second time.
 
-    The camera stays owned by FrameGrabber. This only copies frames, so YOLO
-    and the laptop page can run in the same process.
+    frame_source should return a copy. The vision loop supplies the drawn
+    frame (boxes and the score panel). The raw grabber frame is the fallback
+    until the first detection is drawn.
     """
 
     _PAGE = b"""<!doctype html>
@@ -316,8 +317,9 @@ class LivePreview:
 <img src="/stream" style="width:100%;max-width:960px">
 """
 
-    def __init__(self, grabber, port, host='0.0.0.0'):
+    def __init__(self, grabber, port, host='0.0.0.0', frame_source=None):
         self.grabber = grabber
+        self.frame_source = frame_source or grabber.latest
         self.port = int(port)
         self._stopped = False
         handler = self._handler()
@@ -338,7 +340,7 @@ class LivePreview:
                     self.send_header('Cache-Control', 'no-store')
                     self.end_headers()
                     while not preview._stopped:
-                        frame = preview.grabber.latest()
+                        frame = preview.frame_source()
                         if frame is None:
                             time.sleep(0.05)
                             continue
@@ -793,6 +795,8 @@ class TrafficVisionSystem:
         self.detect_every = max(1, int(detect_every))
         self.stream_port = int(stream_port or 0)
         self.preview = None
+        self._preview_lock = threading.Lock()
+        self._preview_frame = None
         self.update_interval = float(update_interval or publish['update_interval_seconds'])
         self.history_interval = float(publish['history_interval_seconds'])
         self.snapshot_cooldown = float(publish['snapshot_cooldown_seconds'])
@@ -859,7 +863,7 @@ class TrafficVisionSystem:
             print(f"Capture ready at {width}x{height} | live camera (drop stale frames)")
         if self.stream_port:
             try:
-                self.preview = LivePreview(self.grabber, self.stream_port)
+                self.preview = LivePreview(self.grabber, self.stream_port, frame_source=self.preview_frame)
             except OSError as exc:
                 raise OSError(
                     f"Cannot open live view on port {self.stream_port}. "
@@ -1155,6 +1159,20 @@ class TrafficVisionSystem:
                         (255, 255, 255), 2 if index == 0 else 1)
         return annotated
 
+    def preview_frame(self):
+        """Newest drawn frame for the browser. Falls back to the raw camera."""
+        with self._preview_lock:
+            frame = self._preview_frame
+            if frame is not None:
+                return frame.copy()
+        if self.grabber is not None:
+            return self.grabber.latest()
+        return None
+
+    def _publish_preview(self, annotated):
+        with self._preview_lock:
+            self._preview_frame = annotated
+
     # -- main loop ---------------------------------------------------------
 
     def run(self, display_output=True):
@@ -1241,8 +1259,14 @@ class TrafficVisionSystem:
                     if leftover > 0:
                         wait_ms = max(1, int(leftover * 1000))
 
+                annotated = None
+                if display_output or self.preview:
+                    annotated = self.draw_overlay(frame, tracks, level, score)
+                if self.preview and annotated is not None:
+                    self._publish_preview(annotated)
+
                 if display_output:
-                    cv2.imshow('BITCAS Traffic Vision', self.draw_overlay(frame, tracks, level, score))
+                    cv2.imshow('BITCAS Traffic Vision', annotated)
                     if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
                         break
                 elif wait_ms > 1:
