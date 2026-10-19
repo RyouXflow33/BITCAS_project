@@ -49,6 +49,7 @@ SNAPSHOT_URL_PREFIX = 'assets/snapshots'
 
 DEFAULT_CONFIG_FILE = os.path.join(SCRIPT_DIR, 'site_config.json')
 DEFAULT_CONGESTION_FILE = os.path.join(WEB_DATA_DIR, 'congestion.json')
+DEFAULT_INGEST_FILE = os.path.join(SCRIPT_DIR, 'ingest.local.json')
 
 LEVEL_COLORS = {
     'LIGHT': '#27ae60',
@@ -60,6 +61,12 @@ LEVEL_COLORS = {
 # Class 1 (bicycle) is kept as a motorcycle. YOLOv8n often labels an
 # underbone motorcycle that way, and those are the bikes this camera misses.
 COCO_VEHICLES = {1: 'motorcycle', 2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 try:
     from ultralytics import YOLO
@@ -594,9 +601,9 @@ class CentroidTracker:
                 track.last_seen = now
                 track.hits += 1
                 track.misses = 0
-                track.pixel_history.append((now, centroid[0], centroid[1]))
+                track.pixel_history.append((now, track.centroid[0], track.centroid[1]))
 
-            world = self.calibration.to_world(centroid)
+            world = self.calibration.to_world(track.centroid)
             if world is not None:
                 track.world_history.append((now, world[0], world[1]))
             self._update_speed(track)
@@ -737,6 +744,87 @@ class CongestionModel:
 # Output
 # --------------------------------------------------------------------------
 
+class RemoteIngestClient:
+    """
+    Posts a copy of live readings, history rollups, and HEAVY snapshots to Hostinger
+    on a background thread. The local SD-card files stay the primary source on the Pi,
+    so a slow or offline internet link never blocks vehicle detection.
+    """
+
+    def __init__(self, config_path=DEFAULT_INGEST_FILE):
+        self.save_data_url = ''
+        self.upload_snapshot_url = ''
+        self.api_key = ''
+        self.enabled = False
+        self._load(config_path)
+
+    def _load(self, config_path):
+        if not config_path or not os.path.isfile(config_path):
+            return
+        try:
+            with open(config_path, 'r', encoding='utf-8') as handle:
+                cfg = json.load(handle)
+        except (OSError, ValueError) as error:
+            print(f"Warning: could not read {config_path}: {error}")
+            return
+        if not isinstance(cfg, dict) or not cfg.get('enabled'):
+            return
+        if not REQUESTS_AVAILABLE:
+            print("Warning: remote ingest is enabled but python 'requests' is not installed.")
+            return
+        self.save_data_url = str(cfg.get('save_data_url') or '').strip()
+        self.upload_snapshot_url = str(cfg.get('upload_snapshot_url') or '').strip()
+        self.api_key = str(cfg.get('api_key') or '').strip()
+        if self.save_data_url and self.api_key and self.api_key != 'CHANGE_THIS_INGEST_KEY':
+            self.enabled = True
+            print(f"Remote ingest enabled -> {self.save_data_url}")
+
+    def send_json(self, body):
+        if not self.enabled or not self.save_data_url:
+            return
+        threading.Thread(target=self._post_json, args=(body,), daemon=True).start()
+
+    def send_snapshot(self, path, filename, camera_id, level, score, vehicles_in_frame):
+        if not self.enabled or not self.upload_snapshot_url:
+            return
+        threading.Thread(
+            target=self._post_snapshot,
+            args=(path, filename, camera_id, level, score, vehicles_in_frame),
+            daemon=True
+        ).start()
+
+    def _post_json(self, body):
+        try:
+            requests.post(
+                self.save_data_url,
+                json=body,
+                headers={'X-API-Key': self.api_key},
+                timeout=8
+            )
+        except Exception as error:
+            print(f"Warning: remote ingest POST failed: {error}")
+
+    def _post_snapshot(self, path, filename, camera_id, level, score, vehicles_in_frame):
+        try:
+            with open(path, 'rb') as handle:
+                requests.post(
+                    self.upload_snapshot_url,
+                    headers={'X-API-Key': self.api_key},
+                    data={
+                        'camera_id': camera_id,
+                        'congestion_level': level,
+                        'congestion_score': str(score),
+                        'vehicles_in_frame': str(vehicles_in_frame),
+                        'captured_at': datetime.now().isoformat(timespec='seconds'),
+                        'filename': filename
+                    },
+                    files={'snapshot': (filename, handle, 'image/jpeg')},
+                    timeout=15
+                )
+        except Exception as error:
+            print(f"Warning: snapshot upload failed: {error}")
+
+
 class TelemetryWriter:
     """
     Writes the live payload, plus append-only logs for history and crossings.
@@ -867,6 +955,7 @@ class TrafficVisionSystem:
         self.tracker = CentroidTracker(self.config['tracking'], self.calibration)
         self.congestion = CongestionModel(self.config['congestion'])
         self.writer = TelemetryWriter(output_file, WEB_DATA_DIR)
+        self.ingest = RemoteIngestClient()
 
         self.grabber = None
         self.frame_size = None
@@ -1130,6 +1219,7 @@ class TrafficVisionSystem:
             'by_direction': dict(directions)
         }
         self.writer.append_history(record)
+        self.ingest.send_json({'kind': 'minute', 'record': record})
         self.history_bucket = []
         self.last_history_flush = now_monotonic
 
@@ -1144,9 +1234,11 @@ class TrafficVisionSystem:
         if not force and hour_now <= self.current_hour:
             return
 
-        self.writer.append_hourly(aggregate_minute_records(
+        hourly_record = aggregate_minute_records(
             self.hour_bucket, self.config['camera_id'], self.current_hour, self.congestion
-        ))
+        )
+        self.writer.append_hourly(hourly_record)
+        self.ingest.send_json({'kind': 'hourly', 'record': hourly_record})
         self.hour_bucket = []
         self.current_hour = hour_now
 
@@ -1170,6 +1262,11 @@ class TrafficVisionSystem:
         )
         for stale in existing[:-self.max_snapshots]:
             os.remove(stale.path)
+
+        roi_count = sum(1 for track in tracks if self._in_roi(track.centroid))
+        self.ingest.send_snapshot(
+            path, filename, self.config['camera_id'], level, score, roi_count
+        )
         return f"{SNAPSHOT_URL_PREFIX}/{filename}"
 
     # -- display -----------------------------------------------------------
@@ -1287,6 +1384,7 @@ class TrafficVisionSystem:
                         print(f"Evidence snapshot saved: {payload['snapshot_url']}")
 
                     self.writer.write_current(payload)
+                    self.ingest.send_json({'kind': 'live', 'payload': payload})
                     self.writer.append_crossings(self.pending_crossings)
                     self.history_bucket.append({
                         'score': score,

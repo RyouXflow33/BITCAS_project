@@ -25,7 +25,7 @@ function renderReportsPage() {
     meta.textContent = `${reports.length} of ${state.reports.length}`;
 
     if (!reports.length) {
-        cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py on the video. A case appears after HEAVY holds for 3 intervals and a snapshot is written.');
+        cards.innerHTML = emptyState('camera', 'No camera reports yet', 'Waiting for the Pi camera feed. A case opens after HEAVY holds for 3 intervals and a snapshot is written.');
         syncReportSelection([]);
         resetEditor();
         return;
@@ -35,7 +35,7 @@ function renderReportsPage() {
         return `
             <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${report.id}">
                 <div class="report-card-main">
-                    <strong>${icon('camera')} ${report.id} · ${report.location}</strong>
+                    <strong>${icon('camera')} ${escapeHtml(report.id)} · ${escapeHtml(report.location)}</strong>
                     <small>Camera · ${report.vehicleCount} veh · ${report.congestionScore}% · ${formatDateTime(report.createdAtIso)}</small>
                 </div>
                 <div class="report-card-badges">
@@ -112,9 +112,9 @@ function fillReportEditor(reportId) {
 
 function renderEvidenceHtml(report) {
     if (report.snapshotUrl) {
-        return `<img src="${report.snapshotUrl}" alt="Traffic evidence for ${report.id}"><small>Pi snapshot after 3 HEAVY publish intervals</small>`;
+        return `<img src="${escapeHtml(report.snapshotUrl)}" alt="Traffic evidence for ${escapeHtml(report.id)}"><small>Pi snapshot after 3 HEAVY publish intervals</small>`;
     }
-    return '<div class="report-evidence-empty">Camera report — snapshot appears here when traffic_vision.py writes assets/snapshots and congestion.json includes snapshot_url.</div>';
+    return '<div class="report-evidence-empty">Camera report — snapshot appears here when the Pi camera uploads an evidence frame.</div>';
 }
 
 function resetEditor() {
@@ -129,7 +129,7 @@ function resetEditor() {
     if (manualFields) manualFields.hidden = true;
     const caseBody = document.getElementById('reportCase');
     if (caseBody) {
-        caseBody.innerHTML = emptyState('file', 'No camera case yet', 'Run traffic_vision.py; HEAVY for 3 intervals creates the report and snapshot here.');
+        caseBody.innerHTML = emptyState('file', 'No camera case yet', 'Waiting for the Pi camera feed. HEAVY for 3 intervals opens the report and snapshot here.');
     }
     const markResolvedBtn = document.getElementById('markResolvedBtn');
     if (markResolvedBtn) markResolvedBtn.disabled = true;

@@ -60,6 +60,7 @@
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>window.__BITCAS_SESSION = <?= json_encode($initialSession ?? null, JSON_UNESCAPED_SLASHES) ?>;</script>
 <!-- MVC: core -->
 <script src="assets/js/mvc/core/constants.js"></script>
 <script src="assets/js/mvc/core/helpers.js"></script>

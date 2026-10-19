@@ -47,7 +47,7 @@ function renderDataScope(capability) {
 
     if (!capability.sampleCount) {
         scope.dataset.state = 'empty';
-        scope.innerHTML = '<strong>No vision history loaded</strong><span>Start the vision node, or check assets/data/traffic_history.jsonl</span>';
+        scope.innerHTML = '<strong>No vision history loaded</strong><span>Start the Pi vision node so readings are saved to the database.</span>';
         return;
     }
 
@@ -280,7 +280,7 @@ function renderHeatmap(heatmap, capability) {
     if (note) {
         note.textContent = capability.hourlyCount
             ? `${heatmap.coveragePercent}% of the 168 weekly slots have data. Blank cells were never observed.`
-            : 'No hourly rollups found. The vision node writes assets/data/traffic_hourly.jsonl once per hour.';
+            : 'No hourly rollups found. The Pi vision node posts one hourly rollup per clock hour.';
     }
 
     if (!capability.hourlyCount) {
@@ -465,7 +465,7 @@ function exportAnalyticsPdf() {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(9);
     doc.text('Metrics marked "not available" require site calibration; no value is estimated.', 14, 280);
-    doc.text('Note: report data is held in browser localStorage (no backend database yet).', 14, 286);
+    doc.text('Note: report and telemetry data are stored in the BITCAS MySQL database.', 14, 286);
 
     appendForecastPage(doc, width, metrics, capability);
 

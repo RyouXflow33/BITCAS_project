@@ -1,0 +1,7 @@
+{
+  "_readme": "Copy to vision/ingest.local.json and set enabled to true when posting to Hostinger or local XAMPP.",
+  "enabled": false,
+  "save_data_url": "https://rosybrown-hamster-349004.hostingersite.com/api/save_data.php",
+  "upload_snapshot_url": "https://rosybrown-hamster-349004.hostingersite.com/api/upload_snapshot.php",
+  "api_key": "CHANGE_THIS_INGEST_KEY"
+}

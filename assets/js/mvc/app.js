@@ -6,7 +6,7 @@ function bootSession() {
 
     state = loadState();
     ensureStateShape(state);
-    saveState();
+    saveState(false);
 
     renderGlobalCounters();
 
@@ -16,6 +16,16 @@ function bootSession() {
     if (page === 'incidents') initReportsPage();
     if (page === 'dispatch') initDispatchPage();
     if (page === 'accounts') initAccountsPage();
+
+    refreshDeskState().then((updated) => {
+        if (!updated) return;
+        renderGlobalCounters();
+        if (page === 'command') renderCommandPage();
+        if (page === 'incidents') renderReportsPage();
+        if (page === 'dispatch') renderDispatchPage();
+        if (page === 'accounts') renderAccountsPage();
+        if (page === 'analytics') renderAnalyticsPage();
+    });
 
     startGlobalVisionPoller();
 }
@@ -27,7 +37,7 @@ function startGlobalVisionPoller() {
         try {
             const payload = await fetchVisionFeed();
             applyVisionPayload(payload, 'traffic_vision_system');
-            if (document.body.dataset.page === 'command') renderVisionSource('Vision JSON');
+            if (document.body.dataset.page === 'command') renderVisionSource('traffic_vision_system');
         } catch (error) {
             if (document.body.dataset.page === 'command') renderVisionSource((state.live.visionPayload || {}).source || '');
         }

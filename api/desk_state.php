@@ -1,0 +1,32 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/../app/models/DeskStore.php';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+try {
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        echo json_encode(['ok' => true, 'state' => DeskStore::readState()], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $payload = json_decode((string)file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Expected JSON state']);
+            exit;
+        }
+        $state = DeskStore::writeState($payload);
+        echo json_encode(['ok' => true, 'state' => $state], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    http_response_code(405);
+    echo json_encode(['ok' => false, 'error' => 'Use GET or POST']);
+} catch (Throwable $error) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
+}

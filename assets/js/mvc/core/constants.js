@@ -1,17 +1,16 @@
 // MVC: shared constants and static datasets (Model layer support).
-const BITCAS_STORAGE_KEY = 'bitcas_ui_ops_v1';
-const BITCAS_AUTH_KEY = 'bitcas_auth_v1';
-// Local stand-in for the future MySQL `users` table. Officers stay a separate roster.
 const USER_ROLES = { super_admin: 'Super admin', traffic_desk: 'Traffic Desk' };
 const PASSWORD_PEPPER = 'bitcas-lgu|';
 // SHA-256 of PASSWORD_PEPPER + the setup password. First super admin only.
 const SEEDED_SUPER_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
-const VISION_FIXTURE_URL = 'assets/data/congestion.json';
-const ADVISORIES_URL = 'assets/data/advisories.json';
+const VISION_FIXTURE_URL = 'api/get_live.php';
+const ADVISORIES_URL = 'api/advisories.php';
 const ADVISORY_API_URL = 'api/advisories.php';
+const DESK_STATE_API_URL = 'api/desk_state.php';
+const AUTH_API_URL = 'api/auth.php';
 const VISION_POLL_MS = 3000;
-// One aggregated line per minute, written by the Pi.
-const VISION_HISTORY_JSONL_URL = 'assets/data/traffic_history.jsonl';
+// One aggregated line per minute, served from MySQL traffic_minute.
+const VISION_HISTORY_JSONL_URL = 'api/get_history.php?kind=minute';
 // First minute the NCNN detector was actually boxing the Villamonte street.
 // Earlier lines are the broken PyTorch run (empty frames, or peaks of ~300).
 const VISION_HISTORY_START = '2026-10-07T15:33:00';
@@ -21,7 +20,7 @@ const VISION_HOURLY_START = '2026-10-07T16:00:00';
 const VISION_MAX_IN_FRAME = 30;
 // Hourly rollup. Minute records are capped at ~2 days in the browser, but the
 // heatmap and the forecast need weeks, so they read this instead.
-const VISION_HOURLY_URL = 'assets/data/traffic_hourly.jsonl';
+const VISION_HOURLY_URL = 'api/get_history.php?kind=hourly';
 const VISION_HOURLY_MAX_ENTRIES = 1440;
 // A payload older than this means the camera or the network is down, and the
 // dashboard must say so rather than presenting stale numbers as live.
@@ -48,8 +47,6 @@ const VISION_LEVELS = {
     LIGHT: { fallbackScore: 20, color: '#27ae60', caption: 'Normal', severity: 'Low' },
     MODERATE: { fallbackScore: 50, color: '#f39c12', caption: 'Monitor', severity: 'Moderate' },
     HEAVY: { fallbackScore: 75, color: '#e74c3c', caption: 'Heavy queue', severity: 'High' },
-    // Older payloads used CRITICAL for score >= 85. The live UI folds that
-    // into HEAVY; this entry exists so those files still parse.
     CRITICAL: { fallbackScore: 75, color: '#e74c3c', caption: 'Heavy queue', severity: 'High' }
 };
 const CAMERA_SITE = { lat: 10.6642688, lng: 122.9675934 };
@@ -84,4 +81,3 @@ const VILLAMONTE_TRAFFIC_ROAD = {
         }
     }]
 };
-

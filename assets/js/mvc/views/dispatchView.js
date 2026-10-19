@@ -48,7 +48,7 @@ function renderDispatchQueue() {
     count.textContent = `${openReports.length} open`;
 
     if (!openReports.length) {
-        target.innerHTML = emptyState('camera', 'No camera reports yet', 'Run traffic_vision.py — a report appears after HEAVY holds for 3 intervals.');
+        target.innerHTML = emptyState('camera', 'No camera reports yet', 'Waiting for the Pi camera feed. A report opens after HEAVY holds for 3 intervals.');
         return;
     }
 
@@ -62,7 +62,7 @@ function renderDispatchQueue() {
             <div class="dispatch-card ${severityBorderClass(report.severity)} ${selectedDispatchReportId === report.id ? 'selected' : ''}">
                 <div class="priority ${priorityClass(report.severity)}">${priorityLabel(report.severity)}</div>
                 <div class="dispatch-main">
-                    <strong>${report.id} · ${report.location}</strong>
+                    <strong>${escapeHtml(report.id)} · ${escapeHtml(report.location)}</strong>
                     <span>Camera · ${report.vehicleCount} veh · ${report.congestionScore}%</span>
                     <div class="dispatch-meta">
                         <span class="tag ${statusTagClass(report.status)}">${report.status}</span>
@@ -83,7 +83,7 @@ function renderSelectedDispatchReport() {
     const report = selectedDispatchReportId ? findReport(selectedDispatchReportId) : null;
     if (!report) {
         selection.textContent = 'No report selected';
-        target.innerHTML = emptyState('inbox', 'Select a camera report', 'Cases land here after you run traffic_vision.py. Create officers on the roster, then assign a unit.');
+        target.innerHTML = emptyState('inbox', 'Select a camera report', 'Waiting for the Pi camera feed. Create officers on the roster, then assign a unit.');
         return;
     }
 
@@ -97,8 +97,8 @@ function renderSelectedDispatchReport() {
         <div class="selected-report">
             <div class="dispatch-evidence">${evidence}</div>
             <div>
-                <strong>${report.id}</strong>
-                <span>${report.location}</span>
+                <strong>${escapeHtml(report.id)}</strong>
+                <span>${escapeHtml(report.location)}</span>
             </div>
             <div class="selected-report-meta">
                 <span class="tag ${severityTagClass(report.severity)}">${priorityLabel(report.severity)} ${report.severity}</span>
@@ -182,8 +182,8 @@ function renderAssignmentCard(assignment) {
 
     return `
         <div class="kanban-card ${selectedAssignmentId === assignment.id ? 'selected' : ''} ${sla.breached ? 'sla-hot' : ''}" data-assignment-id="${assignment.id}">
-            <strong>${assignment.id}</strong>
-            <span>${report ? report.location : assignment.reportId}</span>
+            <strong>${escapeHtml(assignment.id)}</strong>
+            <span>${escapeHtml(report ? report.location : assignment.reportId)}</span>
             <span>${officer ? officer.name : assignment.officerId} · ${assignment.reportId}</span>
             ${assignment.createdByUserId ? `<span>Assigned by ${userLabel(assignment.createdByUserId)}</span>` : ''}
             <small class="${sla.breached ? 'sla-breach' : 'sla-ok'}">${slaText}</small>
@@ -269,7 +269,7 @@ function renderOfficerProfile() {
         </div>
         <div class="profile-block">
             <span>Current assignment</span>
-            <strong>${report ? `${assignment.id} · ${report.id} · ${report.location}` : 'None'}</strong>
+            <strong>${report ? `${escapeHtml(assignment.id)} · ${escapeHtml(report.id)} · ${escapeHtml(report.location)}` : 'None'}</strong>
         </div>
         <div class="kpi-grid report-kpis">
             <div><span>Tasks today</span><strong>${perf.tasksToday}</strong><small>Assignments started today</small></div>

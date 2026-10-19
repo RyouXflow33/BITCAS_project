@@ -53,7 +53,7 @@ function renderCameraBanner() {
     banner.hidden = false;
     if (!isVision) {
         banner.dataset.state = 'offline';
-        banner.innerHTML = `${icon('offline')}<div><strong>No camera reading yet</strong><span>The desk is waiting for congestion.json from the Pi.</span></div>`;
+        banner.innerHTML = `${icon('offline')}<div><strong>No camera reading yet</strong><span>Waiting for the Pi camera feed to post to the database.</span></div>`;
         return;
     }
 
@@ -239,7 +239,7 @@ function renderMapLayers() {
             fillOpacity: 0.75,
             weight: 2
         });
-        marker.bindPopup(`<strong>${report.id}</strong><br>${report.location}<br>${report.severity === 'Severe' ? 'High' : report.severity} (${report.congestionScore}%)`);
+        marker.bindPopup(`<strong>${escapeHtml(report.id)}</strong><br>${escapeHtml(report.location)}<br>${escapeHtml(report.severity === 'Severe' ? 'High' : report.severity)} (${report.congestionScore}%)`);
         marker.addTo(groups.reports);
     });
 

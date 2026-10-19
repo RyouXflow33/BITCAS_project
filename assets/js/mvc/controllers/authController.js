@@ -35,8 +35,8 @@ function initAuth() {
         });
     }
 
-    const doLogout = () => {
-        clearAuthSession();
+    const doLogout = async () => {
+        await clearAuthSession();
         applyAuthUi(false, null, shell, overlay);
         if (usernameInput) usernameInput.value = '';
         if (passwordInput) passwordInput.value = '';

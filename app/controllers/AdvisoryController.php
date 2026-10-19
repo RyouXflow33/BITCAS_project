@@ -5,12 +5,25 @@ require_once dirname(__DIR__) . '/models/AdvisoryStore.php';
 
 final class AdvisoryController {
     public function handle(): void {
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
 
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            http_response_code(204);
+            return;
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            echo json_encode(advisory_read(), JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
-            echo json_encode(['ok' => false, 'error' => 'Use POST']);
+            echo json_encode(['ok' => false, 'error' => 'Use GET or POST']);
             return;
         }
 
@@ -82,7 +95,7 @@ final class AdvisoryController {
                     $stored = advisory_read();
                     foreach ($stored as $index => $item) {
                         if (($item['id'] ?? '') === $advisory['id']) {
-                            $stored[$index]['channel'] = 'Saved locally';
+                            $stored[$index]['channel'] = 'Saved in database';
                             advisory_write($stored);
                             break;
                         }

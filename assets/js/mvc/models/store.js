@@ -2,19 +2,70 @@
 // All data lives here; views render from it and controllers mutate it through these functions.
 
 let state = null;
+let activeSession = window.__BITCAS_SESSION || null;
+let lastSyncedDeskSignature = '';
+
+function deskStatePayload(source = state) {
+    if (!source) return null;
+    return {
+        users: source.users || [],
+        reports: source.reports || [],
+        officers: source.officers || [],
+        assignments: source.assignments || []
+    };
+}
 
 function loadState() {
+    if (state) return state;
+    return buildDefaultState();
+}
+
+function saveState(syncRemote = true) {
+    if (!syncRemote || !state) return;
+    const payload = deskStatePayload(state);
+    const signature = JSON.stringify(payload);
+    if (signature === lastSyncedDeskSignature) return;
+    lastSyncedDeskSignature = signature;
+    pushDeskState(payload);
+}
+
+async function pushDeskState(payload) {
     try {
-        const raw = localStorage.getItem(BITCAS_STORAGE_KEY);
-        if (!raw) return buildDefaultState();
-        return JSON.parse(raw);
+        await fetch(DESK_STATE_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
     } catch (error) {
-        return buildDefaultState();
+        // MySQL write retry will happen on next desk mutation.
     }
 }
 
-function saveState() {
-    localStorage.setItem(BITCAS_STORAGE_KEY, JSON.stringify(state));
+async function refreshDeskState() {
+    try {
+        const response = await fetch(`${DESK_STATE_API_URL}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) return false;
+        const body = await response.json();
+        if (!body || !body.ok || !body.state) return false;
+        if (!state) {
+            state = loadState();
+            ensureStateShape(state);
+        }
+        const remote = body.state;
+
+        state.users = Array.isArray(remote.users) && remote.users.length ? remote.users.map(normalizeUser) : [seedSuperAdmin()];
+        state.reports = Array.isArray(remote.reports) ? remote.reports : [];
+        state.officers = Array.isArray(remote.officers) ? remote.officers.map(normalizeOfficer) : [];
+        state.assignments = Array.isArray(remote.assignments) ? remote.assignments.map(normalizeAssignment) : [];
+        state.nextReportNumber = Number(remote.nextReportNumber) || 1;
+        state.nextAssignmentNumber = Number(remote.nextAssignmentNumber) || 1;
+        state.nextUserNumber = Number(remote.nextUserNumber) || Math.max(2, state.users.length + 1);
+        ensureStateShape(state);
+        lastSyncedDeskSignature = JSON.stringify(deskStatePayload(state));
+        return true;
+    } catch (error) {
+        return false;
+    }
 }
 
 function buildDefaultState() {
@@ -120,19 +171,13 @@ function normalizeAssignment(assignment) {
 // --- Session model ---
 
 function loadAuthSession() {
-    try {
-        const raw = localStorage.getItem(BITCAS_AUTH_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        const roleOk = parsed.role === 'super_admin' || parsed.role === 'traffic_desk';
-        if (!parsed.userId || !parsed.username || !roleOk) {
-            localStorage.removeItem(BITCAS_AUTH_KEY);
-            return null;
-        }
-        return parsed;
-    } catch (error) {
+    if (!activeSession || typeof activeSession !== 'object') return null;
+    const roleOk = activeSession.role === 'super_admin' || activeSession.role === 'traffic_desk';
+    if (!activeSession.userId || !activeSession.username || !roleOk) {
+        activeSession = null;
         return null;
     }
+    return activeSession;
 }
 
 function seedSuperAdmin() {
@@ -203,12 +248,25 @@ function userLabel(userId) {
 
 async function authenticateUser(username, password) {
     const name = String(username || '').trim().toLowerCase();
-    const user = accountUsers().find((item) => item.username === name);
-    if (!user) return { error: 'Invalid username or password.' };
-    if (!user.active) return { error: 'This account is disabled. Ask the super admin.' };
     const hash = await hashPassword(password);
-    if (hash !== user.passwordHash) return { error: 'Invalid username or password.' };
-    return { user };
+    try {
+        const response = await fetch(AUTH_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login', username: name, passwordHash: hash })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.ok || !body.user) {
+            return { error: body.error || 'Invalid username or password.' };
+        }
+        if (body.session) {
+            saveAuthSession(body.session);
+        }
+        await refreshDeskState();
+        return { user: normalizeUser(body.user) };
+    } catch (error) {
+        return { error: 'Could not reach the server to sign in.' };
+    }
 }
 
 function sessionFromUser(user) {
@@ -301,17 +359,30 @@ async function changeOwnPassword(currentPassword, nextPassword) {
 }
 
 function saveAuthSession(session) {
-    localStorage.setItem(BITCAS_AUTH_KEY, JSON.stringify(session));
+    activeSession = session;
+    window.__BITCAS_SESSION = session;
+    return fetch(AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync', session })
+    }).catch(() => {});
 }
 
 function clearAuthSession() {
-    localStorage.removeItem(BITCAS_AUTH_KEY);
+    activeSession = null;
+    window.__BITCAS_SESSION = null;
+    return fetch(AUTH_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' })
+    }).catch(() => {});
 }
 
 // --- Vision feed model ---
 
 async function fetchVisionFeed() {
-    const response = await fetch(`${VISION_FIXTURE_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    const sep = VISION_FIXTURE_URL.includes('?') ? '&' : '?';
+    const response = await fetch(`${VISION_FIXTURE_URL}${sep}t=${Date.now()}`, { cache: 'no-store' });
     if (!response.ok) throw new Error(`Vision feed unavailable (${response.status})`);
     return response.json();
 }
@@ -336,7 +407,8 @@ async function fetchVisionHistoryJsonl() {
 
 async function fetchJsonl(url) {
     try {
-        const response = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+        const sep = url.includes('?') ? '&' : '?';
+        const response = await fetch(`${url}${sep}t=${Date.now()}`, { cache: 'no-store' });
         if (!response.ok) return [];
         const text = await response.text();
         return text.split('\n').reduce((records, line) => {
@@ -354,9 +426,7 @@ async function fetchJsonl(url) {
     }
 }
 
-// Hourly rollups are read-only derived data, so they live in memory rather
-// than in the persisted state object -- no reason to spend localStorage on
-// something re-fetched on every page load.
+// Hourly rollups are read-only derived data held in memory.
 let visionHourly = [];
 let visionHistory = [];
 

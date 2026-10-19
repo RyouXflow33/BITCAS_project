@@ -10,7 +10,7 @@
 
 <div class="data-scope" id="analyticsScope">
     <strong>Loading vision history&hellip;</strong>
-    <span id="analyticsScopeDetail">Reading traffic_history.jsonl</span>
+    <span id="analyticsScopeDetail">Reading from BITCAS MySQL database</span>
 </div>
 
 <div class="stats-grid">

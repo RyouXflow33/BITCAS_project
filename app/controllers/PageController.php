@@ -7,6 +7,9 @@ function navClass(string $current, string $item): string {
 
 final class PageController {
     public function dispatch(): void {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -22,6 +25,7 @@ final class PageController {
         $page = array_key_exists($requested, $titles) ? $requested : 'command';
         $pageTitle = $titles[$page];
         $viewFile = $page . '.php';
+        $initialSession = $_SESSION['bitcas_user'] ?? null;
 
         require_once dirname(__DIR__) . '/views/partials/icons.php';
         require dirname(__DIR__) . '/views/layout.php';
