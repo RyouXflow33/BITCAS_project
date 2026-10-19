@@ -57,7 +57,9 @@ LEVEL_COLORS = {
     'CRITICAL': '#8b1a1a'
 }
 
-COCO_VEHICLES = {2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
+# Class 1 (bicycle) is kept as a motorcycle. YOLOv8n often labels an
+# underbone motorcycle that way, and those are the bikes this camera misses.
+COCO_VEHICLES = {1: 'motorcycle', 2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
 
 try:
     from ultralytics import YOLO
@@ -344,7 +346,7 @@ class LivePreview:
                         if frame is None:
                             time.sleep(0.05)
                             continue
-                        ok, jpg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+                        ok, jpg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
                         if not ok:
                             time.sleep(0.05)
                             continue
@@ -353,7 +355,7 @@ class LivePreview:
                             self.wfile.flush()
                         except (BrokenPipeError, ConnectionResetError):
                             break
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                     return
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html')
@@ -374,6 +376,38 @@ class LivePreview:
 # --------------------------------------------------------------------------
 # Detection
 # --------------------------------------------------------------------------
+
+def _box_iou(first, second):
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    if inter <= 0:
+        return 0.0
+    area_a = max(1, (first[2] - first[0]) * (first[3] - first[1]))
+    area_b = max(1, (second[2] - second[0]) * (second[3] - second[1]))
+    return inter / float(area_a + area_b - inter)
+
+
+def _blend_box(previous, current, weight=0.55):
+    """Glide the box toward the new detection instead of jumping every frame."""
+    keep = 1.0 - weight
+    return tuple(int(round(previous[index] * keep + current[index] * weight)) for index in range(4))
+
+
+def _suppress_overlapping_boxes(detections):
+    """Keep the stronger box when two of the same class cover the same vehicle."""
+    ordered = sorted(detections, key=lambda item: item['confidence'], reverse=True)
+    kept = []
+    for detection in ordered:
+        box = detection['bbox']
+        if any(detection['class_name'] == other['class_name'] and _box_iou(box, other['bbox']) >= 0.45
+               for other in kept):
+            continue
+        kept.append(detection)
+    return kept
+
 
 class VehicleDetector:
     """YOLO (NCNN or PyTorch) with a Haar cascade as a last resort."""
@@ -423,8 +457,12 @@ class VehicleDetector:
             verbose=False,
             imgsz=self.inference_size,
             conf=self.confidence,
+            iou=0.45,
             classes=list(COCO_VEHICLES)
         )
+        height, width = frame.shape[:2]
+        # Drop specks on poles and signs. Real distant vehicles are still larger.
+        min_side = max(14, int(round(0.025 * height)))
         detections = []
         for result in results:
             for box in result.boxes:
@@ -432,12 +470,14 @@ class VehicleDetector:
                 class_id = int(box.cls[0])
                 if class_id not in COCO_VEHICLES:
                     continue
+                if (x2 - x1) < min_side or (y2 - y1) < min_side:
+                    continue
                 detections.append({
                     'bbox': (int(x1), int(y1), int(x2), int(y2)),
                     'confidence': float(box.conf[0]),
                     'class_name': COCO_VEHICLES[class_id]
                 })
-        return detections
+        return _suppress_overlapping_boxes(detections)
 
     def _detect_haar(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -456,12 +496,15 @@ class VehicleDetector:
 class Track:
     """One vehicle followed across frames."""
 
-    __slots__ = ('id', 'class_name', 'bbox', 'centroid', 'last_seen', 'misses',
-                 'pixel_history', 'world_history', 'counted_lines', 'speed_kph', 'speed_pps')
+    __slots__ = ('id', 'class_name', 'class_votes', 'bbox', 'centroid', 'last_seen', 'misses',
+                 'hits', 'pixel_history', 'world_history', 'counted_lines', 'speed_kph', 'speed_pps')
 
     def __init__(self, track_id, detection, centroid, now):
         self.id = track_id
+        self.hits = 1
+        self.class_votes = deque(maxlen=8)
         self.class_name = detection['class_name']
+        self.class_votes.append(self.class_name)
         self.bbox = detection['bbox']
         self.centroid = centroid
         self.last_seen = now
@@ -472,6 +515,14 @@ class Track:
         self.speed_kph = None
         self.speed_pps = 0.0
         self.pixel_history.append((now, centroid[0], centroid[1]))
+
+    def note_class(self, class_name):
+        """Keep the class that won most of the recent frames, so a van does not flip car/bus/truck."""
+        self.class_votes.append(class_name)
+        counts = {}
+        for name in self.class_votes:
+            counts[name] = counts.get(name, 0) + 1
+        self.class_name = max(counts, key=counts.get)
 
     @property
     def previous_centroid(self):
@@ -536,10 +587,12 @@ class CentroidTracker:
                 self.tracks[track_id] = track
             else:
                 track = self.tracks[track_id]
-                track.bbox = detection['bbox']
-                track.centroid = centroid
-                track.class_name = detection['class_name']
+                track.bbox = _blend_box(track.bbox, detection['bbox'])
+                track.centroid = ((track.bbox[0] + track.bbox[2]) / 2.0,
+                                  (track.bbox[1] + track.bbox[3]) / 2.0)
+                track.note_class(detection['class_name'])
                 track.last_seen = now
+                track.hits += 1
                 track.misses = 0
                 track.pixel_history.append((now, centroid[0], centroid[1]))
 
@@ -556,7 +609,13 @@ class CentroidTracker:
             if now - track.last_seen > self.max_age:
                 del self.tracks[track_id]
 
-        return [self.tracks[track_id] for track_id in updated_ids]
+        # A webcam detection often misses for a frame or two. Keep drawing the
+        # last box during that gap so it does not blink the way a 4K frame does not.
+        hold_seconds = 0.5
+        return [
+            track for track in self.tracks.values()
+            if track.hits >= 2 and now - track.last_seen <= hold_seconds
+        ]
 
     def _update_speed(self, track):
         """
