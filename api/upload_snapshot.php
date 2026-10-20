@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../app/models/VisionStore.php';
+require_once __DIR__ . '/../app/models/DeskStore.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -62,10 +63,20 @@ if (file_put_contents($targetPath, $bytes, LOCK_EX) === false) {
 $snapshotUrl = 'assets/snapshots/' . $requestedName;
 try {
     VisionStore::saveSnapshotRecord($cameraId, $level, $score, $vehiclesInFrame, $snapshotUrl, $capturedAt);
-} catch (Throwable $ignore) {
+} catch (Throwable $snapshotError) {
+    error_log('upload_snapshot record: ' . $snapshotError->getMessage());
+}
+
+// The congestion report is opened here, on the server, so it exists even when no desk is open.
+$reportId = null;
+try {
+    $reportId = DeskStore::createVisionReport($cameraId, $level, $score, $vehiclesInFrame, $snapshotUrl);
+} catch (Throwable $reportError) {
+    error_log('upload_snapshot report: ' . $reportError->getMessage());
 }
 
 echo json_encode([
     'ok' => true,
-    'snapshot_url' => $snapshotUrl
+    'snapshot_url' => $snapshotUrl,
+    'report_id' => $reportId
 ], JSON_UNESCAPED_SLASHES);

@@ -150,10 +150,12 @@ function computeAverageOccupancy(telemetry, capability) {
     return values.length ? average(values) : null;
 }
 
+// Share of vehicles that actually crossed the counting line, by class. The older per-tick
+// view counts (vehicleTypes) counted one slow vehicle many times, so they are not used here.
 function computeVehicleMix(telemetry) {
     const totals = {};
     telemetry.forEach((point) => {
-        Object.entries(point.vehicleTypes || {}).forEach(([type, count]) => {
+        Object.entries(point.crossingTypes || {}).forEach(([type, count]) => {
             totals[type] = (totals[type] || 0) + Number(count || 0);
         });
     });

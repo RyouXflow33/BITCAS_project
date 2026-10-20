@@ -164,7 +164,7 @@ function renderVehicleMix(mix) {
     if (!target) return;
 
     if (!mix.length) {
-        target.innerHTML = '<div class="chart-empty">No classified detections yet.</div>';
+        target.innerHTML = '<div class="chart-empty">No vehicles have crossed the counting line yet.</div>';
         return;
     }
 

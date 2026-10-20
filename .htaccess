@@ -1,0 +1,23 @@
+# BITCAS: keep source, config and tooling folders private on the web host.
+# The site only needs index.php, api/*.php and assets/ to be reachable.
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Server code, vision code, docs and git history are never served as files.
+    RewriteRule ^(app|vision|docs|tests|\.git)(/|$) - [F,L]
+
+    # Config with secrets, whatever folder it sits in.
+    RewriteRule ^api/.*\.local\.php$ - [F,L]
+    RewriteRule \.local\.(php|json)$ - [F,L]
+
+    # Source and data files that have no business being downloaded.
+    RewriteRule \.(sql|md|py|bat|ps1|jsonl|yaml|param|bin)$ - [F,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "same-origin"
+</IfModule>

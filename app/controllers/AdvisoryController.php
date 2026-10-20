@@ -2,21 +2,24 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/models/AdvisoryStore.php';
+require_once dirname(__DIR__) . '/models/Auth.php';
 
 final class AdvisoryController {
     public function handle(): void {
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type');
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
 
         if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            // Only reading is open to other origins. Sending an advisory is never cross-site.
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, OPTIONS');
             http_response_code(204);
             return;
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            // The driver app reads this list without signing in.
+            header('Access-Control-Allow-Origin: *');
             echo json_encode(advisory_read(), JSON_UNESCAPED_SLASHES);
             return;
         }
@@ -26,6 +29,9 @@ final class AdvisoryController {
             echo json_encode(['ok' => false, 'error' => 'Use GET or POST']);
             return;
         }
+
+        // Broadcasting reaches every driver phone, so only a signed-in desk account may do it.
+        $signedIn = Auth::requireUser(true);
 
         $payload = json_decode((string)file_get_contents('php://input'), true);
         if (!is_array($payload)) {
@@ -62,10 +68,8 @@ final class AdvisoryController {
                 return;
             }
 
-            $actor = trim((string)($payload['createdByUserId'] ?? ''));
-            if (strlen($actor) > 40) {
-                $actor = '';
-            }
+            // The author is the signed-in account, not whatever the request claims.
+            $actor = (string)$signedIn['userId'];
 
             $sentAt = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
             $advisory = [
@@ -105,8 +109,9 @@ final class AdvisoryController {
                 // The desk already received the saved advisory.
             }
         } catch (Throwable $error) {
+            error_log('advisories: ' . $error->getMessage());
             http_response_code(500);
-            echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
+            echo json_encode(['ok' => false, 'error' => 'Server error. Try again.']);
         }
     }
 

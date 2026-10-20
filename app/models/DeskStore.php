@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/Auth.php';
 
 final class DeskStore {
     private const SEEDED_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
@@ -38,11 +39,9 @@ final class DeskStore {
 
         $pdo->beginTransaction();
         try {
-            if (isset($payload['users']) && is_array($payload['users'])) {
-                self::replaceUsers($pdo, $payload['users']);
-            } else {
-                self::ensureSeedAdmin($pdo);
-            }
+            // Accounts are never written from this list. They change only through the
+            // signed-in actions in api/desk_users.php, so a stale page cannot erase them.
+            self::ensureSeedAdmin($pdo);
 
             if (isset($payload['reports']) && is_array($payload['reports'])) {
                 self::replaceReports($pdo, $payload['reports']);
@@ -67,7 +66,7 @@ final class DeskStore {
         return self::readState();
     }
 
-    private static function ensureSeedAdmin(PDO $pdo): void {
+    public static function ensureSeedAdmin(PDO $pdo): void {
         $countStmt = $pdo->query('SELECT COUNT(*) FROM users');
         $count = $countStmt ? (int)$countStmt->fetchColumn() : 0;
         if ($count > 0) {
@@ -93,7 +92,7 @@ final class DeskStore {
 
     private static function fetchUsers(PDO $pdo): array {
         $stmt = $pdo->query(
-            'SELECT id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso
+            'SELECT id, full_name, username, role, active, must_change_password, created_by, created_at_iso
              FROM users
              ORDER BY created_at_iso ASC'
         );
@@ -103,7 +102,6 @@ final class DeskStore {
                 'id' => (string)$row['id'],
                 'fullName' => (string)$row['full_name'],
                 'username' => (string)$row['username'],
-                'passwordHash' => (string)$row['password_hash'],
                 'role' => $row['role'] === 'super_admin' ? 'super_admin' : 'traffic_desk',
                 'active' => (int)$row['active'] === 1,
                 'mustChangePassword' => (int)$row['must_change_password'] === 1,
@@ -206,39 +204,258 @@ final class DeskStore {
         }, $rows);
     }
 
-    private static function replaceUsers(PDO $pdo, array $users): void {
-        if (!$users) {
-            self::ensureSeedAdmin($pdo);
-            return;
+    // --- desk accounts: one action at a time, checked on the server ---
+    // Each method throws InvalidArgumentException with a message the desk can show.
+
+    public static function createUser(string $fullName, string $username, string $password, ?string $createdBy): array {
+        $fullName = trim($fullName);
+        $username = strtolower(trim($username));
+        if ($fullName === '' || strlen($fullName) > 120) {
+            throw new InvalidArgumentException('Full name is required.');
         }
-        $pdo->exec('DELETE FROM users');
-        $stmt = $pdo->prepare(
-            'INSERT INTO users (id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso)
-             VALUES (:id, :full_name, :username, :password_hash, :role, :active, :must_change_password, :created_by, :created_at_iso)'
-        );
-        foreach ($users as $user) {
-            if (!is_array($user) || empty($user['id']) || empty($user['username']) || empty($user['passwordHash'])) {
-                continue;
-            }
-            $stmt->execute([
-                ':id' => (string)$user['id'],
-                ':full_name' => (string)($user['fullName'] ?? $user['username']),
-                ':username' => strtolower(trim((string)$user['username'])),
-                ':password_hash' => (string)$user['passwordHash'],
-                ':role' => ($user['role'] ?? '') === 'super_admin' ? 'super_admin' : 'traffic_desk',
-                ':active' => ($user['active'] ?? true) ? 1 : 0,
-                ':must_change_password' => !empty($user['mustChangePassword']) ? 1 : 0,
-                ':created_by' => !empty($user['createdBy']) ? (string)$user['createdBy'] : null,
-                ':created_at_iso' => (string)($user['createdAtIso'] ?? gmdate('Y-m-d\TH:i:s\Z'))
-            ]);
+        if (!preg_match('/^[a-z0-9._-]{3,32}$/', $username)) {
+            throw new InvalidArgumentException('Username must be 3-32 characters: letters, numbers, dot, dash, or underscore.');
         }
+        if (strlen($password) < 8) {
+            throw new InvalidArgumentException('Temporary password must be at least 8 characters.');
+        }
+
+        $pdo = self::pdo();
         self::ensureSeedAdmin($pdo);
+        $exists = $pdo->prepare('SELECT 1 FROM users WHERE username = :username LIMIT 1');
+        $exists->execute([':username' => $username]);
+        if ($exists->fetchColumn()) {
+            throw new InvalidArgumentException('That username is already in use.');
+        }
+
+        $max = $pdo->query("SELECT COALESCE(MAX(CAST(SUBSTRING(id, 5) AS UNSIGNED)), 0) FROM users WHERE id LIKE 'USR-%'");
+        $id = 'USR-' . (((int)($max ? $max->fetchColumn() : 0)) + 1);
+
+        $insert = $pdo->prepare(
+            'INSERT INTO users (id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso)
+             VALUES (:id, :full_name, :username, :password_hash, :role, 1, 1, :created_by, :created_at_iso)'
+        );
+        $insert->execute([
+            ':id' => $id,
+            ':full_name' => $fullName,
+            ':username' => $username,
+            ':password_hash' => Auth::hashPassword($password),
+            ':role' => 'traffic_desk',
+            ':created_by' => $createdBy,
+            ':created_at_iso' => gmdate('Y-m-d\TH:i:s\Z')
+        ]);
+        return self::publicUserById($pdo, $id);
+    }
+
+    public static function resetPassword(string $userId, string $password): array {
+        if (strlen($password) < 8) {
+            throw new InvalidArgumentException('Temporary password must be at least 8 characters.');
+        }
+        $pdo = self::pdo();
+        self::requireUserRow($pdo, $userId);
+        $update = $pdo->prepare('UPDATE users SET password_hash = :hash, must_change_password = 1 WHERE id = :id');
+        $update->execute([':hash' => Auth::hashPassword($password), ':id' => $userId]);
+        return self::publicUserById($pdo, $userId);
+    }
+
+    public static function changeOwnPassword(string $userId, string $current, string $next): array {
+        if (strlen($next) < 8) {
+            throw new InvalidArgumentException('New password must be at least 8 characters.');
+        }
+        $pdo = self::pdo();
+        $row = self::requireUserRow($pdo, $userId);
+        if (!Auth::verifyPassword($pdo, $row, $current)) {
+            throw new InvalidArgumentException('Current password does not match.');
+        }
+        $update = $pdo->prepare('UPDATE users SET password_hash = :hash, must_change_password = 0 WHERE id = :id');
+        $update->execute([':hash' => Auth::hashPassword($next), ':id' => $userId]);
+        return self::publicUserById($pdo, $userId);
+    }
+
+    public static function setActive(string $userId, bool $active, string $actorId): array {
+        $pdo = self::pdo();
+        $row = self::requireUserRow($pdo, $userId);
+        if (!$active) {
+            if ($userId === $actorId) {
+                throw new InvalidArgumentException('You cannot disable the account you are using.');
+            }
+            if ($row['role'] === 'super_admin' && self::otherActiveAdmins($pdo, $userId) < 1) {
+                throw new InvalidArgumentException('Keep at least one active super admin.');
+            }
+        }
+        $update = $pdo->prepare('UPDATE users SET active = :active WHERE id = :id');
+        $update->execute([':active' => $active ? 1 : 0, ':id' => $userId]);
+        return self::publicUserById($pdo, $userId);
+    }
+
+    public static function deleteUser(string $userId, string $actorId): void {
+        $pdo = self::pdo();
+        $row = self::requireUserRow($pdo, $userId);
+        if ($userId === $actorId) {
+            throw new InvalidArgumentException('You cannot delete the account you are using.');
+        }
+        if ($row['role'] === 'super_admin' && self::otherActiveAdmins($pdo, $userId) < 1) {
+            throw new InvalidArgumentException('Keep at least one super admin.');
+        }
+        $delete = $pdo->prepare('DELETE FROM users WHERE id = :id');
+        $delete->execute([':id' => $userId]);
+    }
+
+    // Opens the congestion report for a HEAVY snapshot. The Pi upload calls this, so a report
+    // exists even when nobody has the desk open. One report per snapshot_url.
+    // Returns the report id, or null when the level is not HEAVY.
+    public static function createVisionReport(
+        string $cameraId,
+        string $level,
+        int $score,
+        int $vehiclesInFrame,
+        string $snapshotUrl
+    ): ?string {
+        if (strtoupper($level) !== 'HEAVY') {
+            return null;
+        }
+        $pdo = self::pdo();
+
+        $existing = $pdo->prepare('SELECT id FROM reports WHERE snapshot_url = :url LIMIT 1');
+        $existing->execute([':url' => $snapshotUrl]);
+        $found = $existing->fetchColumn();
+        if ($found) {
+            return (string)$found;
+        }
+
+        // Site details come from the latest live reading for this camera.
+        $live = $pdo->prepare(
+            'SELECT site_name, lat, lng, occupancy_pct, avg_speed_kph, speed_calibrated
+             FROM camera_live WHERE camera_id = :camera LIMIT 1'
+        );
+        $live->execute([':camera' => $cameraId]);
+        $site = $live->fetch();
+        $site = is_array($site) ? $site : [];
+
+        $now = gmdate('Y-m-d\TH:i:s\Z');
+        $pdo->beginTransaction();
+        try {
+            $max = $pdo->query("SELECT COALESCE(MAX(CAST(SUBSTRING(id, 5) AS UNSIGNED)), 0) FROM reports WHERE id LIKE 'RPT-%' FOR UPDATE");
+            $id = 'RPT-' . (((int)($max ? $max->fetchColumn() : 0)) + 1);
+
+            $insert = $pdo->prepare(
+                'INSERT INTO reports (
+                    id, location, camera_id, severity, congestion_score, vehicle_count,
+                    occupancy_pct, avg_speed_kph, status, lat, lng, source, context, notes,
+                    false_positive, snapshot_url, created_at_iso, updated_at_iso,
+                    resolved_at_iso, created_by_user_id, updated_by_user_id
+                ) VALUES (
+                    :id, :location, :camera_id, :severity, :score, :vehicles,
+                    :occupancy, :speed, :status, :lat, :lng, :source, :context, :notes,
+                    0, :snapshot_url, :created_at, :updated_at,
+                    NULL, NULL, NULL
+                )'
+            );
+            $insert->execute([
+                ':id' => $id,
+                ':location' => (string)($site['site_name'] ?? 'Villamonte Street Intersection'),
+                ':camera_id' => $cameraId,
+                ':severity' => 'High',
+                ':score' => max(0, min(100, $score)),
+                ':vehicles' => max(0, $vehiclesInFrame),
+                ':occupancy' => isset($site['occupancy_pct']) ? (float)$site['occupancy_pct'] : null,
+                ':speed' => !empty($site['speed_calibrated']) && $site['avg_speed_kph'] !== null
+                    ? (float)$site['avg_speed_kph']
+                    : null,
+                ':status' => 'Open',
+                ':lat' => isset($site['lat']) ? (float)$site['lat'] : 10.6642688,
+                ':lng' => isset($site['lng']) ? (float)$site['lng'] : 122.9675934,
+                ':source' => 'Vision system',
+                ':context' => sprintf(
+                    'Automatically generated: HEAVY congestion (score %d) persisted for three reporting intervals.',
+                    max(0, min(100, $score))
+                ),
+                ':notes' => '',
+                ':snapshot_url' => $snapshotUrl,
+                ':created_at' => $now,
+                ':updated_at' => $now
+            ]);
+
+            // Keep the newest 500 reports and drop dispatch rows that pointed at removed ones.
+            $pdo->exec(
+                'DELETE FROM reports WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id FROM reports ORDER BY created_at_iso DESC LIMIT 18446744073709551615 OFFSET 500
+                    ) AS old_reports
+                )'
+            );
+            $pdo->exec('DELETE FROM assignments WHERE report_id NOT IN (SELECT id FROM reports)');
+
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $error;
+        }
+        return $id;
+    }
+
+    // Used only by api/auth.php. Returns the stored hash, so it must never be echoed.
+    public static function findUserRowByUsername(PDO $pdo, string $username): ?array {
+        $stmt = $pdo->prepare(
+            'SELECT id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso
+             FROM users WHERE username = :username LIMIT 1'
+        );
+        $stmt->execute([':username' => strtolower(trim($username))]);
+        $row = $stmt->fetch();
+        return is_array($row) ? $row : null;
+    }
+
+    public static function publicUser(array $row): array {
+        return [
+            'id' => (string)$row['id'],
+            'fullName' => (string)$row['full_name'],
+            'username' => (string)$row['username'],
+            'role' => $row['role'] === 'super_admin' ? 'super_admin' : 'traffic_desk',
+            'active' => (int)$row['active'] === 1,
+            'mustChangePassword' => (int)$row['must_change_password'] === 1,
+            'createdBy' => $row['created_by'] !== null ? (string)$row['created_by'] : null,
+            'createdAtIso' => (string)$row['created_at_iso']
+        ];
+    }
+
+    private static function pdo(): PDO {
+        $pdo = Database::connect();
+        if (!($pdo instanceof PDO)) {
+            throw new RuntimeException('Database unavailable');
+        }
+        return $pdo;
+    }
+
+    private static function requireUserRow(PDO $pdo, string $userId): array {
+        $stmt = $pdo->prepare(
+            'SELECT id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso
+             FROM users WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $userId]);
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            throw new InvalidArgumentException('Account not found.');
+        }
+        return $row;
+    }
+
+    private static function publicUserById(PDO $pdo, string $userId): array {
+        return self::publicUser(self::requireUserRow($pdo, $userId));
+    }
+
+    private static function otherActiveAdmins(PDO $pdo, string $exceptId): int {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'super_admin' AND active = 1 AND id <> :id");
+        $stmt->execute([':id' => $exceptId]);
+        return (int)$stmt->fetchColumn();
     }
 
     private static function replaceReports(PDO $pdo, array $reports): void {
-        $pdo->exec('DELETE FROM reports');
+        // Insert or update by id. Nothing is deleted here, so a page that has not yet seen a
+        // report the camera just opened cannot erase it.
         $stmt = $pdo->prepare(
-            'INSERT INTO reports (
+            'REPLACE INTO reports (
                 id, location, camera_id, severity, congestion_score, vehicle_count,
                 occupancy_pct, avg_speed_kph, status, lat, lng, source, context, notes,
                 false_positive, snapshot_url, created_at_iso, updated_at_iso,
@@ -286,9 +503,8 @@ final class DeskStore {
     }
 
     private static function replaceOfficers(PDO $pdo, array $officers): void {
-        $pdo->exec('DELETE FROM officers');
         $stmt = $pdo->prepare(
-            'INSERT INTO officers (
+            'REPLACE INTO officers (
                 id, name, full_name, rank_title, contact, radio, zone,
                 shift_start, shift_end, rest_day, status, skills_json, date_assigned
             ) VALUES (
@@ -324,9 +540,8 @@ final class DeskStore {
     }
 
     private static function replaceAssignments(PDO $pdo, array $assignments): void {
-        $pdo->exec('DELETE FROM assignments');
         $stmt = $pdo->prepare(
-            'INSERT INTO assignments (
+            'REPLACE INTO assignments (
                 id, report_id, officer_id, status, assigned_at_iso,
                 acknowledged_at_iso, enroute_at_iso, onscene_at_iso,
                 resolved_at_iso, field_notes, created_by_user_id, updated_by_user_id

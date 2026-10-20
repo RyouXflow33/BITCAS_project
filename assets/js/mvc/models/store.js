@@ -16,8 +16,8 @@ function isDeskStateLoaded() {
 
 function deskStatePayload(source = state) {
     if (!source) return null;
+    // Accounts are not part of this list. They change only through api/desk_users.php.
     return {
-        users: source.users || [],
         reports: source.reports || [],
         officers: source.officers || [],
         assignments: source.assignments || []
@@ -215,7 +215,6 @@ function seedSuperAdmin() {
         id: 'USR-1',
         fullName: 'LGU Admin',
         username: 'lguadmin',
-        passwordHash: SEEDED_SUPER_ADMIN_HASH,
         role: 'super_admin',
         active: true,
         mustChangePassword: false,
@@ -229,20 +228,12 @@ function normalizeUser(user) {
         id: user.id,
         fullName: user.fullName || user.username,
         username: String(user.username || '').trim().toLowerCase(),
-        passwordHash: user.passwordHash,
         role: user.role === 'super_admin' ? 'super_admin' : 'traffic_desk',
         active: user.active !== false,
         mustChangePassword: Boolean(user.mustChangePassword),
         createdBy: user.createdBy || null,
         createdAtIso: user.createdAtIso || new Date().toISOString()
     };
-}
-
-function hashPassword(password) {
-    const data = new TextEncoder().encode(PASSWORD_PEPPER + String(password || ''));
-    return crypto.subtle.digest('SHA-256', data).then((buffer) => {
-        return Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-    });
 }
 
 function accountUsers() {
@@ -278,12 +269,12 @@ function userLabel(userId) {
 
 async function authenticateUser(username, password) {
     const name = String(username || '').trim().toLowerCase();
-    const hash = await hashPassword(password);
     try {
+        // The server checks the password. Nothing about it is stored or hashed in the browser.
         const response = await fetch(AUTH_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'login', username: name, passwordHash: hash })
+            body: JSON.stringify({ action: 'login', username: name, password: String(password || '') })
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !body.ok || !body.user) {
@@ -326,92 +317,81 @@ function createDeskUser(fields) {
     return { pending: { fullName, username, password } };
 }
 
+// Every account change goes to api/desk_users.php. The server checks who is asking,
+// applies the rules (last super admin, own account), and keeps the hashes.
+async function postDeskUsers(body) {
+    try {
+        const response = await fetch(DESK_USERS_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            return { error: result.error || 'Could not save the account change.' };
+        }
+        return result;
+    } catch (error) {
+        return { error: 'Could not reach the server.' };
+    }
+}
+
 async function commitDeskUser(pending) {
-    const hash = await hashPassword(pending.password);
-    const user = normalizeUser({
-        id: `USR-${state.nextUserNumber}`,
+    if (!isSuperAdmin()) return { error: 'Only the super admin can add a desk account.' };
+    const result = await postDeskUsers({
+        action: 'create',
         fullName: pending.fullName,
         username: pending.username,
-        passwordHash: hash,
-        role: 'traffic_desk',
-        active: true,
-        mustChangePassword: true,
-        createdBy: currentActor().userId,
-        createdAtIso: new Date().toISOString()
+        password: pending.password
     });
-    state.nextUserNumber += 1;
-    state.users.push(user);
-    saveState();
-    return { user };
+    if (result.error) return result;
+    await refreshDeskState();
+    return { user: normalizeUser(result.user) };
 }
 
-function setDeskUserActive(userId, active) {
+async function setDeskUserActive(userId, active) {
     if (!isSuperAdmin()) return { error: 'Only the super admin can change account access.' };
-    const user = state.users.find((item) => item.id === userId);
-    if (!user) return { error: 'Account not found.' };
-    if (user.id === currentActor().userId && !active) {
-        return { error: 'You cannot disable the account you are using.' };
-    }
-    const otherAdmins = state.users.filter((item) => item.role === 'super_admin' && item.active && item.id !== user.id);
-    if (user.role === 'super_admin' && !active && !otherAdmins.length) {
-        return { error: 'Keep at least one active super admin.' };
-    }
-    user.active = Boolean(active);
-    saveState();
-    return { user };
+    const result = await postDeskUsers({ action: 'set_active', userId, active: Boolean(active) });
+    if (result.error) return result;
+    await refreshDeskState();
+    return { user: normalizeUser(result.user) };
 }
 
-function deleteDeskUser(userId) {
+async function deleteDeskUser(userId) {
     if (!isSuperAdmin()) return { error: 'Only the super admin can delete a desk account.' };
-    const user = state.users.find((item) => item.id === userId);
-    if (!user) return { error: 'Account not found.' };
-    if (user.id === currentActor().userId) {
-        return { error: 'You cannot delete the account you are using.' };
-    }
-    const otherAdmins = state.users.filter((item) => item.role === 'super_admin' && item.id !== user.id);
-    if (user.role === 'super_admin' && !otherAdmins.length) {
-        return { error: 'Keep at least one super admin.' };
-    }
-    state.users = state.users.filter((item) => item.id !== userId);
-    saveState();
-    return { user };
+    const result = await postDeskUsers({ action: 'delete', userId });
+    if (result.error) return result;
+    await refreshDeskState();
+    return { ok: true };
 }
 
 async function resetDeskUserPassword(userId, password) {
     if (!isSuperAdmin()) return { error: 'Only the super admin can reset a password.' };
-    const user = state.users.find((item) => item.id === userId);
-    if (!user) return { error: 'Account not found.' };
     if (String(password || '').length < 8) return { error: 'Temporary password must be at least 8 characters.' };
-    user.passwordHash = await hashPassword(password);
-    user.mustChangePassword = true;
-    saveState();
-    return { user };
+    const result = await postDeskUsers({ action: 'reset_password', userId, password: String(password) });
+    if (result.error) return result;
+    await refreshDeskState();
+    return { user: normalizeUser(result.user) };
 }
 
 async function changeOwnPassword(currentPassword, nextPassword) {
-    const session = currentSession();
-    const user = state.users.find((item) => item.id === session?.userId);
-    if (!user) return { error: 'Sign in again before changing the password.' };
+    if (!currentSession()) return { error: 'Sign in again before changing the password.' };
     if (String(nextPassword || '').length < 8) return { error: 'New password must be at least 8 characters.' };
-    const currentHash = await hashPassword(currentPassword);
-    if (currentHash !== user.passwordHash) return { error: 'Current password does not match.' };
-    user.passwordHash = await hashPassword(nextPassword);
-    user.mustChangePassword = false;
-    saveState();
-    const nextSession = sessionFromUser(user);
-    nextSession.loginAtIso = session.loginAtIso;
-    saveAuthSession(nextSession);
-    return { user };
+    const result = await postDeskUsers({
+        action: 'change_password',
+        currentPassword: String(currentPassword || ''),
+        newPassword: String(nextPassword)
+    });
+    if (result.error) return result;
+    if (result.session) saveAuthSession(result.session);
+    await refreshDeskState();
+    return { user: normalizeUser(result.user) };
 }
 
+// The session itself lives on the server. This only keeps the copy the page already received.
 function saveAuthSession(session) {
     activeSession = session;
     window.__BITCAS_SESSION = session;
-    return fetch(AUTH_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync', session })
-    }).catch(() => {});
 }
 
 function clearAuthSession() {
@@ -527,6 +507,7 @@ function normalizeHourlyEntry(record) {
         // short window of minute records.
         crossingsPerMinute: Number.isFinite(crossings) && samples ? crossings / samples : null,
         vehicleTypes: record.vehicle_types || {},
+        crossingTypes: record.crossing_types || {},
         byDirection: record.by_direction || {},
         source: record.source || 'traffic_vision_system'
     };
@@ -552,11 +533,20 @@ function applyVisionPayload(payload, source) {
     if (!latest || latest.sourceTimestamp !== payload.timestamp) {
         state.liveTelemetry.push(buildTelemetryEntry(payload, nowIso, nextVehicleCount, nextScore));
         state.liveTelemetry = state.liveTelemetry.slice(-240);
-        maybeCreateEvidenceReport({ ...payload, source: payload.source || source }, nextVehicleCount, nextScore, nowIso);
     }
 
     saveState();
     return true;
+}
+
+// Vehicles that crossed the counting line, grouped by class.
+function countCrossingsByClass(crossings) {
+    const counts = {};
+    (Array.isArray(crossings) ? crossings : []).forEach((crossing) => {
+        const type = crossing && crossing.vehicle_class;
+        if (type) counts[type] = (counts[type] || 0) + 1;
+    });
+    return counts;
 }
 
 function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
@@ -571,6 +561,7 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
         congestionScore: score,
         visionLevel: normalizeVisionLevel(payload.congestion_level),
         vehicleTypes: payload.vehicle_types || {},
+        crossingTypes: countCrossingsByClass(payload.crossings),
         occupancyPct: Number.isFinite(occupancy) ? occupancy : null,
         avgSpeedKph: payload.speed_calibrated && Number.isFinite(speedKph) ? speedKph : null,
         speedCalibrated: Boolean(payload.speed_calibrated),
@@ -583,40 +574,9 @@ function buildTelemetryEntry(payload, nowIso, vehicleCount, score) {
     };
 }
 
-function maybeCreateEvidenceReport(payload, vehicleCount, score, nowIso) {
-    // Only the live vision node may open a case.
-    if ((payload.source || '') !== 'traffic_vision_system') return;
-    const isHeavy = normalizeVisionLevel(payload.congestion_level) === 'HEAVY';
-    if (!payload.snapshot_url || !isHeavy) return;
-    if (state.reports.some((report) => report.snapshotUrl === payload.snapshot_url)) return;
-
-    state.reports.unshift({
-        id: `RPT-${state.nextReportNumber}`,
-        location: payload.site_name || 'Villamonte Street Intersection',
-        cameraId: payload.camera_id || null,
-        severity: visionLevelToSeverity(normalizeVisionLevel(payload.congestion_level)),
-        congestionScore: score,
-        vehicleCount,
-        occupancyPct: Number.isFinite(Number(payload.occupancy_pct)) ? Number(payload.occupancy_pct) : null,
-        avgSpeedKph: payload.speed_calibrated ? Number(payload.avg_speed_kph) : null,
-        status: 'Open',
-        lat: Number(payload.lat) || CAMERA_SITE.lat,
-        lng: Number(payload.lng) || CAMERA_SITE.lng,
-        source: 'Vision system',
-        context: `Automatically generated: ${normalizeVisionLevel(payload.congestion_level)} congestion (score ${score}) persisted for three reporting intervals.`,
-        notes: '',
-        falsePositive: false,
-        snapshotUrl: payload.snapshot_url,
-        createdAtIso: nowIso,
-        updatedAtIso: nowIso,
-        resolvedAtIso: null,
-        createdByUserId: currentActor().userId,
-        updatedByUserId: currentActor().userId
-    });
-
-    state.nextReportNumber += 1;
-    state.reports = state.reports.slice(0, 120);
-}
+// Congestion reports are opened on the server when the Pi uploads a HEAVY photo
+// (api/upload_snapshot.php). The desk only reads them, so a report exists even when
+// nobody had the page open. See refreshDeskState().
 
 // Accepts both a v2 aggregated history record and a raw v1 payload.
 function normalizeVisionHistoryEntry(record) {
@@ -641,6 +601,7 @@ function normalizeVisionHistoryEntry(record) {
         congestionScore: payloadScore(record),
         visionLevel: normalizeVisionLevel(record.congestion_level),
         vehicleTypes: record.vehicle_types || {},
+        crossingTypes: record.crossing_types || {},
         occupancyPct: Number.isFinite(occupancy) ? occupancy : null,
         avgSpeedKph: record.speed_calibrated && Number.isFinite(speedKph) ? speedKph : null,
         speedCalibrated: Boolean(record.speed_calibrated),

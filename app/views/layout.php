@@ -61,27 +61,24 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>window.__BITCAS_SESSION = <?= json_encode($initialSession ?? null, JSON_UNESCAPED_SLASHES) ?>;</script>
-<!-- MVC: core -->
-<script src="assets/js/mvc/core/constants.js"></script>
-<script src="assets/js/mvc/core/helpers.js"></script>
-<!-- MVC: models -->
-<script src="assets/js/mvc/models/store.js?v=<?= filemtime(dirname(__DIR__, 2) . '/assets/js/mvc/models/store.js') ?>"></script>
-<script src="assets/js/mvc/models/analyticsModel.js"></script>
-<!-- MVC: views -->
-<script src="assets/js/mvc/views/authView.js"></script>
-<script src="assets/js/mvc/views/commandView.js"></script>
-<script src="assets/js/mvc/views/analyticsView.js"></script>
-<script src="assets/js/mvc/views/reportsView.js"></script>
-<script src="assets/js/mvc/views/dispatchView.js"></script>
-<script src="assets/js/mvc/views/accountsView.js"></script>
-<!-- MVC: controllers -->
-<script src="assets/js/mvc/controllers/authController.js"></script>
-<script src="assets/js/mvc/controllers/commandController.js"></script>
-<script src="assets/js/mvc/controllers/analyticsController.js"></script>
-<script src="assets/js/mvc/controllers/reportsController.js"></script>
-<script src="assets/js/mvc/controllers/dispatchController.js"></script>
-<script src="assets/js/mvc/controllers/accountsController.js"></script>
-<!-- MVC: bootstrap -->
-<script src="assets/js/mvc/app.js?v=<?= filemtime(dirname(__DIR__, 2) . '/assets/js/mvc/app.js') ?>"></script>
+<?php
+// Every local script carries its file time, so a browser or Hostinger cache can never serve an old copy
+// after an upload. Load order matters: core, models, views, controllers, then the bootstrap.
+$appScripts = [
+    'core/constants.js', 'core/helpers.js',
+    'models/store.js', 'models/analyticsModel.js',
+    'views/authView.js', 'views/commandView.js', 'views/analyticsView.js',
+    'views/reportsView.js', 'views/dispatchView.js', 'views/accountsView.js',
+    'controllers/authController.js', 'controllers/commandController.js',
+    'controllers/analyticsController.js', 'controllers/reportsController.js',
+    'controllers/dispatchController.js', 'controllers/accountsController.js',
+    'app.js'
+];
+$scriptRoot = dirname(__DIR__, 2) . '/assets/js/mvc/';
+foreach ($appScripts as $script) {
+    $stamp = (int)@filemtime($scriptRoot . $script);
+    echo '<script src="assets/js/mvc/' . $script . '?v=' . $stamp . '"></script>' . "\n";
+}
+?>
 </body>
 </html>

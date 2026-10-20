@@ -78,12 +78,20 @@ CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     full_name VARCHAR(120) NOT NULL,
     username VARCHAR(64) NOT NULL UNIQUE,
-    password_hash CHAR(64) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(32) NOT NULL DEFAULT 'traffic_desk',
     active TINYINT(1) NOT NULL DEFAULT 1,
     must_change_password TINYINT(1) NOT NULL DEFAULT 0,
     created_by VARCHAR(32) NULL,
     created_at_iso VARCHAR(40) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL,
+    username VARCHAR(64) NOT NULL,
+    attempted_at DATETIME NOT NULL,
+    KEY idx_ip_time (ip, attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS reports (

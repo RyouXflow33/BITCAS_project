@@ -37,6 +37,14 @@ function startGlobalVisionPoller() {
         if (!isDeskStateLoaded()) {
             const loaded = await refreshDeskState();
             if (loaded && document.body.dataset.page === 'accounts') renderAccountsPage();
+        } else {
+            // The server opens congestion reports when the Pi uploads a HEAVY photo.
+            // Read the saved list again now and then so the desk shows them without a reload.
+            const now = Date.now();
+            if (!window.__bitcasDeskRefreshAt || now - window.__bitcasDeskRefreshAt > 10000) {
+                window.__bitcasDeskRefreshAt = now;
+                await refreshDeskState();
+            }
         }
         try {
             const payload = await fetchVisionFeed();

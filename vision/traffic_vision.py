@@ -32,7 +32,7 @@ import os
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -50,6 +50,12 @@ SNAPSHOT_URL_PREFIX = 'assets/snapshots'
 DEFAULT_CONFIG_FILE = os.path.join(SCRIPT_DIR, 'site_config.json')
 DEFAULT_CONGESTION_FILE = os.path.join(WEB_DATA_DIR, 'congestion.json')
 DEFAULT_INGEST_FILE = os.path.join(SCRIPT_DIR, 'ingest.local.json')
+# Remembers how far the history files have been delivered to the database, so an
+# internet outage or a reboot never leaves a gap in the minute and hourly rows.
+INGEST_ACK_FILE = os.path.join(SCRIPT_DIR, 'ingest_ack.local.json')
+# Same windows the server keeps (VisionStore): older rows would be pruned on arrival.
+REPLAY_MAX_AGE_SECONDS = {'minute': 3 * 86400, 'hourly': 90 * 86400}
+REPLAY_RETRY_SECONDS = 60
 
 LEVEL_COLORS = {
     'LIGHT': '#27ae60',
@@ -751,12 +757,23 @@ class RemoteIngestClient:
     so a slow or offline internet link never blocks vehicle detection.
     """
 
-    def __init__(self, config_path=DEFAULT_INGEST_FILE):
+    def __init__(self, config_path=DEFAULT_INGEST_FILE, ack_file=INGEST_ACK_FILE):
         self.save_data_url = ''
         self.upload_snapshot_url = ''
         self.api_key = ''
         self.enabled = False
+        self.ack_file = ack_file
+        # Catch-up replay: the local JSONL files are the record, the database is a copy.
+        # `_acked` is the newest minute/hourly timestamp known to be in the database.
+        # The server stores each (camera, timestamp) once, so sending a row twice is harmless.
+        self._lock = threading.Lock()
+        self._needs_replay = True      # always catch up once after a start
+        self._replaying = False
+        self._acked = {'minute': '', 'hourly': ''}
+        self._sources = {}
         self._load(config_path)
+        if self.enabled:
+            self._load_ack()
 
     def _load(self, config_path):
         if not config_path or not os.path.isfile(config_path):
@@ -782,7 +799,108 @@ class RemoteIngestClient:
     def send_json(self, body):
         if not self.enabled or not self.save_data_url:
             return
-        threading.Thread(target=self._post_json, args=(body,), daemon=True).start()
+        threading.Thread(target=self._send_and_track, args=(body,), daemon=True).start()
+
+    # -- catch-up replay ---------------------------------------------------
+
+    def start_replay(self, minute_file, hourly_file):
+        """Start the background thread that re-sends rows the database never received."""
+        if not self.enabled or not self.save_data_url:
+            return
+        self._sources = {'minute': minute_file, 'hourly': hourly_file}
+        threading.Thread(target=self._replay_loop, daemon=True).start()
+
+    def _load_ack(self):
+        try:
+            with open(self.ack_file, 'r', encoding='utf-8') as handle:
+                saved = json.load(handle)
+            for kind in self._acked:
+                self._acked[kind] = str(saved.get(kind) or '')
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def _save_ack(self):
+        try:
+            temp_path = self.ack_file + '.tmp'
+            with open(temp_path, 'w', encoding='utf-8') as handle:
+                json.dump(self._acked, handle)
+            os.replace(temp_path, self.ack_file)
+        except OSError as error:
+            print(f"Warning: could not save {self.ack_file}: {error}")
+
+    def _advance_ack(self, kind, stamp):
+        with self._lock:
+            if stamp and stamp > self._acked[kind]:
+                self._acked[kind] = stamp
+                self._save_ack()
+
+    def _send_and_track(self, body):
+        ok = self._post_json(body)
+        kind = body.get('kind')
+        if kind not in REPLAY_MAX_AGE_SECONDS:
+            return
+        if not ok:
+            self._needs_replay = True
+            return
+        # A live success only moves the marker when nothing older is still missing.
+        if not self._needs_replay and not self._replaying:
+            self._advance_ack(kind, str((body.get('record') or {}).get('timestamp') or ''))
+
+    def _replay_loop(self):
+        time.sleep(5)  # let the camera start first
+        while True:
+            if self._needs_replay:
+                self._replay_once()
+            time.sleep(REPLAY_RETRY_SECONDS)
+
+    def _replay_once(self):
+        with self._lock:
+            self._needs_replay = False
+            self._replaying = True
+        complete = True
+        try:
+            for kind in ('minute', 'hourly'):
+                if not self._replay_kind(kind):
+                    complete = False
+                    break
+        except Exception as error:
+            print(f"Warning: catch-up replay failed: {error}")
+            complete = False
+        finally:
+            with self._lock:
+                self._replaying = False
+                if not complete:
+                    self._needs_replay = True
+
+    def _replay_kind(self, kind):
+        """Send every row newer than the acknowledged marker. False means: try again later."""
+        path = self._sources.get(kind)
+        if not path or not os.path.isfile(path):
+            return True
+        oldest = (datetime.now() - timedelta(seconds=REPLAY_MAX_AGE_SECONDS[kind])).isoformat(timespec='seconds')
+        floor = max(self._acked[kind], oldest)
+
+        pending = []
+        with open(path, 'r', encoding='utf-8') as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                stamp = str(record.get('timestamp') or '') if isinstance(record, dict) else ''
+                if stamp > floor:
+                    pending.append((stamp, record))
+
+        if pending:
+            print(f"Catch-up: re-sending {len(pending)} {kind} row(s) the database may be missing")
+        for stamp, record in pending:
+            if not self._post_json({'kind': kind, 'record': record}):
+                return False
+            self._advance_ack(kind, stamp)
+        return True
 
     def send_snapshot(self, path, filename, camera_id, level, score, vehicles_in_frame):
         if not self.enabled or not self.upload_snapshot_url:
@@ -794,15 +912,21 @@ class RemoteIngestClient:
         ).start()
 
     def _post_json(self, body):
+        """Returns True only when the server confirmed it stored the row."""
         try:
-            requests.post(
+            response = requests.post(
                 self.save_data_url,
                 json=body,
                 headers={'X-API-Key': self.api_key, 'User-Agent': 'Mozilla/5.0 (BITCAS-Pi)'},
                 timeout=8
             )
+            if response.status_code != 200:
+                print(f"Warning: remote ingest returned HTTP {response.status_code}")
+                return False
+            return True
         except Exception as error:
             print(f"Warning: remote ingest POST failed: {error}")
+            return False
 
     def _post_snapshot(self, path, filename, camera_id, level, score, vehicles_in_frame):
         try:
@@ -898,10 +1022,13 @@ def aggregate_minute_records(records, camera_id, bucket_start, congestion_model)
     """
     speeds = [r['avg_speed_kph'] for r in records if r.get('avg_speed_kph') is not None]
     classes = defaultdict(int)
+    crossed = defaultdict(int)
     directions = defaultdict(int)
     for record in records:
         for name, count in (record.get('vehicle_types') or {}).items():
             classes[name] += count
+        for name, count in (record.get('crossing_types') or {}).items():
+            crossed[name] += count
         for name, count in (record.get('by_direction') or {}).items():
             directions[name] += count
 
@@ -922,8 +1049,17 @@ def aggregate_minute_records(records, camera_id, bucket_start, congestion_model)
         'speed_calibrated': any(r.get('speed_calibrated') for r in records),
         'crossings': sum(r['crossings'] for r in records),
         'vehicle_types': dict(classes),
+        'crossing_types': dict(crossed),
         'by_direction': dict(directions)
     }
+
+
+def count_crossings_by_class(crossings):
+    """How many of these counting-line crossings were each vehicle class."""
+    counts = defaultdict(int)
+    for crossing in crossings:
+        counts[crossing['vehicle_class']] += 1
+    return dict(counts)
 
 
 # --------------------------------------------------------------------------
@@ -956,6 +1092,7 @@ class TrafficVisionSystem:
         self.congestion = CongestionModel(self.config['congestion'])
         self.writer = TelemetryWriter(output_file, WEB_DATA_DIR)
         self.ingest = RemoteIngestClient()
+        self.ingest.start_replay(self.writer.history_file, self.writer.hourly_file)
 
         self.grabber = None
         self.frame_size = None
@@ -1194,10 +1331,13 @@ class TrafficVisionSystem:
         bucket = self.history_bucket
         speeds = [entry['avg_speed_kph'] for entry in bucket if entry['avg_speed_kph'] is not None]
         classes = defaultdict(int)
+        crossed = defaultdict(int)
         directions = defaultdict(int)
         for entry in bucket:
             for name, count in entry['vehicle_types'].items():
                 classes[name] += count
+            for name, count in (entry.get('crossing_types') or {}).items():
+                crossed[name] += count
             for name, count in entry['directions'].items():
                 directions[name] += count
 
@@ -1216,6 +1356,7 @@ class TrafficVisionSystem:
             'speed_calibrated': self.calibration.enabled,
             'crossings': sum(e['crossings'] for e in bucket),
             'vehicle_types': dict(classes),
+            'crossing_types': dict(crossed),
             'by_direction': dict(directions)
         }
         self.writer.append_history(record)
@@ -1393,6 +1534,9 @@ class TrafficVisionSystem:
                         'avg_speed_kph': payload['avg_speed_kph'],
                         'crossings': len(self.window_crossings),
                         'vehicle_types': payload['vehicle_types'],
+                        # Vehicles that really crossed the counting line, by class. This is what
+                        # the dashboard's vehicle mix uses (vehicle_types is a per-tick view count).
+                        'crossing_types': count_crossings_by_class(self.window_crossings),
                         'directions': {k: v for k, v in payload['flow'].items()
                                        if k not in ('window_seconds', 'per_minute')}
                     })

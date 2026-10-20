@@ -37,7 +37,12 @@ function initAccountsPage() {
                 error.textContent = pending.error;
                 return;
             }
-            await commitDeskUser(pending.pending);
+            const saved = await commitDeskUser(pending.pending);
+            if (saved.error) {
+                error.hidden = false;
+                error.textContent = saved.error;
+                return;
+            }
             error.hidden = true;
             addForm.reset();
             renderAccountsPage();
@@ -62,7 +67,7 @@ function initAccountsPage() {
             }
             if (toggle) {
                 const user = state.users.find((item) => item.id === toggle.dataset.toggleUser);
-                const result = setDeskUserActive(toggle.dataset.toggleUser, user ? !user.active : false);
+                const result = await setDeskUserActive(toggle.dataset.toggleUser, user ? !user.active : false);
                 if (result.error) {
                     window.alert(result.error);
                     return;
@@ -75,7 +80,7 @@ function initAccountsPage() {
                 const user = state.users.find((item) => item.id === remove.dataset.deleteUser);
                 const name = user ? user.username : 'this account';
                 if (!window.confirm(`Delete the desk login for ${name}?`)) return;
-                const result = deleteDeskUser(remove.dataset.deleteUser);
+                const result = await deleteDeskUser(remove.dataset.deleteUser);
                 if (result.error) {
                     window.alert(result.error);
                     return;

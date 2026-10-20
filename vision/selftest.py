@@ -81,6 +81,8 @@ def run():
     tv.WEB_SNAPSHOT_DIR = os.path.join(workspace, 'snapshots')
     tv.VehicleDetector = SyntheticDetector
     tv.FrameGrabber = SyntheticGrabber
+    # Never let synthetic traffic reach the real database, even on the Pi where ingest.local.json exists.
+    tv.RemoteIngestClient._load = lambda self, config_path: None
 
     output_file = os.path.join(workspace, 'congestion.json')
     system = tv.TrafficVisionSystem(video_source=0, output_file=output_file, update_interval=0.2)
@@ -143,6 +145,25 @@ def run():
     if not directions:
         failures.append("crossings carry no direction")
 
+    # The dashboard's vehicle mix reads crossing_types, so it must add up to the crossings.
+    logged_by_class = {}
+    for crossing in crossings:
+        logged_by_class[crossing['vehicle_class']] = logged_by_class.get(crossing['vehicle_class'], 0) + 1
+    minute_by_class = {}
+    for record in history:
+        for name, count in (record.get('crossing_types') or {}).items():
+            minute_by_class[name] = minute_by_class.get(name, 0) + count
+    hourly_by_class = {}
+    for record in hourly:
+        for name, count in (record.get('crossing_types') or {}).items():
+            hourly_by_class[name] = hourly_by_class.get(name, 0) + count
+    if minute_by_class != logged_by_class:
+        failures.append(f"minute crossing_types {minute_by_class} != crossings.jsonl {logged_by_class}")
+    if hourly_by_class != logged_by_class:
+        failures.append(f"hourly crossing_types {hourly_by_class} != crossings.jsonl {logged_by_class}")
+
+    failures.extend(check_catch_up_replay())
+
     print('===================================================')
     if failures:
         for failure in failures:
@@ -152,6 +173,64 @@ def run():
     print(f"Counted {payload['totals']['today']} vehicles, directions={sorted(directions)}")
     print("ALL CHECKS PASSED")
     return 0
+
+
+def check_catch_up_replay():
+    """An outage must not leave a gap: unsent rows go out later, exactly once, oldest rule applied."""
+    from datetime import datetime, timedelta
+
+    problems = []
+    workspace = tempfile.mkdtemp(prefix='bitcas_replay_')
+    minute_path = os.path.join(workspace, 'traffic_history.jsonl')
+    hourly_path = os.path.join(workspace, 'traffic_hourly.jsonl')
+    now = datetime.now().replace(microsecond=0)
+
+    def stamp(delta):
+        return (now - delta).isoformat(timespec='seconds')
+
+    # One row older than the server keeps, then five recent ones.
+    minutes = [{'camera_id': 'T', 'timestamp': stamp(timedelta(days=5))}]
+    minutes += [{'camera_id': 'T', 'timestamp': stamp(timedelta(minutes=m))} for m in (5, 4, 3, 2, 1)]
+    with open(minute_path, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(json.dumps(r) for r in minutes) + '\n')
+
+    client = tv.RemoteIngestClient(config_path='', ack_file=os.path.join(workspace, 'ack.json'))
+    client.enabled = True
+    client.save_data_url = 'http://invalid.test'
+    client._sources = {'minute': minute_path, 'hourly': hourly_path}
+
+    sent = []
+    state = {'fail_on_call': 3}
+
+    def fake_post(body):
+        if state['fail_on_call'] and len(sent) + 1 == state['fail_on_call']:
+            state['fail_on_call'] = 0
+            return False
+        sent.append(body['record']['timestamp'])
+        return True
+
+    client._post_json = fake_post
+
+    client._replay_once()  # the third row fails: link dropped mid-way
+    if len(sent) != 2:
+        problems.append(f"replay should stop at the first failure, sent {len(sent)}")
+    if not client._needs_replay:
+        problems.append("a failed replay must ask to be retried")
+
+    client._replay_once()  # link is back
+    expected = [r['timestamp'] for r in minutes[1:]]
+    if sent != expected:
+        problems.append(f"replay sent {sent}, expected {expected} (old row skipped, none twice)")
+
+    before = len(sent)
+    client._replay_once()
+    if len(sent) != before:
+        problems.append("replay re-sent rows that were already acknowledged")
+
+    with open(client.ack_file, encoding='utf-8') as handle:
+        if json.load(handle)['minute'] != expected[-1]:
+            problems.append("acknowledged marker did not reach the newest row")
+    return problems
 
 
 def _read_jsonl(path):

@@ -53,6 +53,7 @@ try {
 
     echo json_encode(['ok' => true, 'stored' => 'camera_live']);
 } catch (Throwable $error) {
+    error_log('save_data: ' . $error->getMessage());
     http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
+    echo json_encode(['ok' => false, 'error' => 'Server error. Try again.']);
 }

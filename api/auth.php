@@ -2,19 +2,14 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../app/models/DeskStore.php';
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/../app/models/Auth.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
+// GET: who is signed in right now (read again from MySQL).
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    echo json_encode([
-        'ok' => true,
-        'session' => $_SESSION['bitcas_user'] ?? null
-    ], JSON_UNESCAPED_SLASHES);
+    echo json_encode(['ok' => true, 'session' => Auth::user()], JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -34,66 +29,64 @@ if (!is_array($payload)) {
 $action = (string)($payload['action'] ?? '');
 
 if ($action === 'logout') {
-    unset($_SESSION['bitcas_user']);
-    session_destroy();
+    Auth::logout();
     echo json_encode(['ok' => true]);
     exit;
 }
 
-if ($action === 'sync' && isset($payload['session']) && is_array($payload['session'])) {
-    $_SESSION['bitcas_user'] = [
-        'userId' => (string)($payload['session']['userId'] ?? ''),
-        'username' => (string)($payload['session']['username'] ?? ''),
-        'fullName' => (string)($payload['session']['fullName'] ?? ''),
-        'role' => ($payload['session']['role'] ?? '') === 'super_admin' ? 'super_admin' : 'traffic_desk',
-        'mustChangePassword' => !empty($payload['session']['mustChangePassword']),
-        'loginAtIso' => (string)($payload['session']['loginAtIso'] ?? gmdate('Y-m-d\TH:i:s\Z'))
-    ];
-    echo json_encode(['ok' => true, 'session' => $_SESSION['bitcas_user']], JSON_UNESCAPED_SLASHES);
-    exit;
-}
-
+// A session exists only after a correct password. There is no action that lets the
+// browser describe its own session.
 if ($action === 'login') {
     $username = strtolower(trim((string)($payload['username'] ?? '')));
-    $passwordHash = strtolower(trim((string)($payload['passwordHash'] ?? '')));
+    $password = (string)($payload['password'] ?? '');
 
     try {
-        $desk = DeskStore::readState();
-        $matched = null;
-        foreach ($desk['users'] as $user) {
-            if (($user['username'] ?? '') === $username) {
-                $matched = $user;
-                break;
-            }
+        $pdo = Database::connect();
+        if (!($pdo instanceof PDO)) {
+            throw new RuntimeException('Database unavailable');
         }
-        if (!$matched || !hash_equals(strtolower((string)$matched['passwordHash']), $passwordHash)) {
+
+        if (Auth::isLockedOut($pdo)) {
+            http_response_code(429);
+            echo json_encode(['ok' => false, 'error' => 'Too many failed attempts. Wait 10 minutes and try again.']);
+            exit;
+        }
+
+        // Make sure the seeded super admin exists on a brand-new database.
+        DeskStore::ensureSeedAdmin($pdo);
+
+        $row = $username !== '' && $password !== '' ? DeskStore::findUserRowByUsername($pdo, $username) : null;
+        $valid = false;
+        if ($row) {
+            $valid = Auth::verifyPassword($pdo, $row, $password);
+        } else {
+            Auth::burnTime($password);
+        }
+
+        if (!$valid) {
+            Auth::recordFailure($pdo, $username);
             http_response_code(401);
             echo json_encode(['ok' => false, 'error' => 'Invalid username or password.']);
             exit;
         }
-        if (empty($matched['active'])) {
+        if ((int)$row['active'] !== 1) {
             http_response_code(403);
             echo json_encode(['ok' => false, 'error' => 'This account is disabled. Ask the super admin.']);
             exit;
         }
 
-        $session = [
-            'userId' => (string)$matched['id'],
-            'username' => (string)$matched['username'],
-            'fullName' => (string)$matched['fullName'],
-            'role' => (string)$matched['role'],
-            'mustChangePassword' => !empty($matched['mustChangePassword']),
-            'loginAtIso' => gmdate('Y-m-d\TH:i:s\Z')
-        ];
-        $_SESSION['bitcas_user'] = $session;
+        Auth::clearFailures($pdo);
+        Auth::login($row);
+        $session = Auth::user();
 
         echo json_encode([
             'ok' => true,
-            'user' => $matched,
+            'user' => DeskStore::publicUser($row),
             'session' => $session
         ], JSON_UNESCAPED_SLASHES);
         exit;
     } catch (Throwable $error) {
+        error_log('auth login: ' . $error->getMessage());
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'Database error during login.']);
         exit;

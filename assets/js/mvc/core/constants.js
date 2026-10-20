@@ -1,13 +1,12 @@
 // MVC: shared constants and static datasets (Model layer support).
 const USER_ROLES = { super_admin: 'Super admin', traffic_desk: 'Traffic Desk' };
-const PASSWORD_PEPPER = 'bitcas-lgu|';
-// SHA-256 of PASSWORD_PEPPER + the setup password. First super admin only.
-const SEEDED_SUPER_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
 const VISION_FIXTURE_URL = 'api/get_live.php';
 const ADVISORIES_URL = 'api/advisories.php';
 const ADVISORY_API_URL = 'api/advisories.php';
 const DESK_STATE_API_URL = 'api/desk_state.php';
 const AUTH_API_URL = 'api/auth.php';
+// Create, reset, enable, disable, and delete desk accounts. Checked on the server.
+const DESK_USERS_API_URL = 'api/desk_users.php';
 const VISION_POLL_MS = 3000;
 // One aggregated line per minute, served from MySQL traffic_minute.
 const VISION_HISTORY_JSONL_URL = 'api/get_history.php?kind=minute';

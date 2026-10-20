@@ -4,6 +4,7 @@ php-server.log
 api/onesignal.local.php
 api/database.local.php
 vision/ingest.local.json
+vision/ingest_ack.local.json
 
 # Python cache and logs
 __pycache__/

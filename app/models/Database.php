@@ -86,9 +86,22 @@ final class Database {
         return is_string($provided) && hash_equals($expected, trim($provided));
     }
 
+    // Small changes to a database that was created from an older schema.sql.
+    private static function migrate(PDO $pdo): void {
+        // bcrypt hashes are 60 characters. The first schema used CHAR(64) for SHA-256.
+        $column = $pdo->query(
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password_hash'"
+        );
+        if ($column && strtolower((string)$column->fetchColumn()) === 'char') {
+            $pdo->exec('ALTER TABLE users MODIFY password_hash VARCHAR(255) NOT NULL');
+        }
+    }
+
     private static function ensureSchema(PDO $pdo): void {
         $check = $pdo->query("SHOW TABLES LIKE 'camera_live'");
         if ($check && $check->fetchColumn()) {
+            self::migrate($pdo);
             return;
         }
         $sqlPath = __DIR__ . '/schema.sql';

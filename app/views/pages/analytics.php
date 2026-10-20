@@ -103,7 +103,7 @@
         <div class="chart" id="trafficChart"></div>
     </section>
     <section class="panel">
-        <div class="panel-head"><div><h2><?= icon('layers') ?> Vehicle mix</h2><span>Share of detections</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('layers') ?> Vehicle mix</h2><span>Share of vehicles that crossed the line</span></div></div>
         <div id="vehicleMixChart" class="mix-list"></div>
     </section>
 </div>
