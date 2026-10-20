@@ -6,6 +6,13 @@ let activeSession = window.__BITCAS_SESSION || null;
 let lastSyncedDeskSignature = '';
 let deskSaveInFlight = false;
 let deskSaveQueued = false;
+// The page starts with only the seeded admin in memory. Nothing may be saved
+// until the real desk list has been read from the database at least once.
+let deskLoaded = false;
+
+function isDeskStateLoaded() {
+    return deskLoaded;
+}
 
 function deskStatePayload(source = state) {
     if (!source) return null;
@@ -23,14 +30,14 @@ function loadState() {
 }
 
 function saveState(syncRemote = true) {
-    if (!syncRemote || !state) return;
+    if (!syncRemote || !state || !deskLoaded) return;
     const signature = JSON.stringify(deskStatePayload(state));
     if (signature === lastSyncedDeskSignature && !deskSaveQueued) return;
     queueDeskSave();
 }
 
 function queueDeskSave() {
-    if (!state) return;
+    if (!state || !deskLoaded) return;
     if (deskSaveInFlight) {
         deskSaveQueued = true;
         return;
@@ -46,7 +53,7 @@ function queueDeskSave() {
     fetch(DESK_STATE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, basedOnServerState: true })
     }).then((response) => {
         if (response.ok && signature === JSON.stringify(deskStatePayload(state))) {
             lastSyncedDeskSignature = signature;
@@ -84,6 +91,7 @@ async function refreshDeskState() {
         state.nextUserNumber = Number(remote.nextUserNumber) || Math.max(2, state.users.length + 1);
         ensureStateShape(state);
         lastSyncedDeskSignature = JSON.stringify(deskStatePayload(state));
+        deskLoaded = true;
         return true;
     } catch (error) {
         return false;

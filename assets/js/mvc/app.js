@@ -34,6 +34,10 @@ function startGlobalVisionPoller() {
     if (window.__bitcasVisionPoller) return;
 
     const tick = async () => {
+        if (!isDeskStateLoaded()) {
+            const loaded = await refreshDeskState();
+            if (loaded && document.body.dataset.page === 'accounts') renderAccountsPage();
+        }
         try {
             const payload = await fetchVisionFeed();
             applyVisionPayload(payload, 'traffic_vision_system');

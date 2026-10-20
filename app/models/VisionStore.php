@@ -4,6 +4,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/Database.php';
 
 final class VisionStore {
+    // Analytics reads 2 days of minute rows and 60 days of hourly rows.
+    // These windows are a little longer so a clock difference cannot eat the visible history.
+    private const MINUTE_KEEP_DAYS = 3;
+    private const HOURLY_KEEP_DAYS = 90;
+    private const SNAPSHOT_KEEP_DAYS = 30;
+
     public static function saveLivePayload(array $payload): void {
         $pdo = Database::connect();
         if (!($pdo instanceof PDO)) {
@@ -111,6 +117,7 @@ final class VisionStore {
             ':crossings' => max(0, (int)($record['crossings'] ?? 0)),
             ':payload_json' => $json
         ]);
+        self::pruneOldReadings($pdo);
     }
 
     public static function saveHourlyRecord(array $record): void {
@@ -161,6 +168,7 @@ final class VisionStore {
             ':crossings' => max(0, (int)($record['crossings'] ?? 0)),
             ':payload_json' => $json
         ]);
+        self::pruneOldReadings($pdo);
     }
 
     public static function saveSnapshotRecord(
@@ -187,6 +195,49 @@ final class VisionStore {
             ':snapshot_url' => $snapshotUrl,
             ':captured_at' => $capturedAt ?: date('c')
         ]);
+    }
+
+    private static function manilaCutoff(int $days): string {
+        return (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))
+            ->modify('-' . $days . ' days')
+            ->format('Y-m-d\TH:i:s');
+    }
+
+    private static function pruneOldReadings(PDO $pdo): void {
+        try {
+            $deleteMinute = $pdo->prepare('DELETE FROM traffic_minute WHERE recorded_at < :cutoff');
+            $deleteMinute->execute([':cutoff' => self::manilaCutoff(self::MINUTE_KEEP_DAYS)]);
+
+            $deleteHourly = $pdo->prepare('DELETE FROM traffic_hourly WHERE recorded_at < :cutoff');
+            $deleteHourly->execute([':cutoff' => self::manilaCutoff(self::HOURLY_KEEP_DAYS)]);
+
+            $snapshotCutoff = self::manilaCutoff(self::SNAPSHOT_KEEP_DAYS);
+            $oldSnapshots = $pdo->prepare(
+                'SELECT snapshot_url FROM snapshots WHERE captured_at <> \'\' AND captured_at < :cutoff'
+            );
+            $oldSnapshots->execute([':cutoff' => $snapshotCutoff]);
+            $urls = $oldSnapshots->fetchAll(PDO::FETCH_COLUMN);
+            if (is_array($urls)) {
+                foreach ($urls as $url) {
+                    self::deleteSnapshotFile((string)$url);
+                }
+            }
+            $deleteSnapshots = $pdo->prepare(
+                'DELETE FROM snapshots WHERE captured_at <> \'\' AND captured_at < :cutoff'
+            );
+            $deleteSnapshots->execute([':cutoff' => $snapshotCutoff]);
+        } catch (Throwable $ignore) {
+        }
+    }
+
+    private static function deleteSnapshotFile(string $url): void {
+        if (!preg_match('#^assets/snapshots/heavy_\\d{8}_\\d{6}\\.jpg$#', $url)) {
+            return;
+        }
+        $path = dirname(__DIR__, 2) . '/' . $url;
+        if (is_file($path)) {
+            unlink($path);
+        }
     }
 
     public static function latestLivePayload(): ?array {

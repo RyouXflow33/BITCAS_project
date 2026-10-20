@@ -65,7 +65,7 @@
 <script src="assets/js/mvc/core/constants.js"></script>
 <script src="assets/js/mvc/core/helpers.js"></script>
 <!-- MVC: models -->
-<script src="assets/js/mvc/models/store.js"></script>
+<script src="assets/js/mvc/models/store.js?v=<?= filemtime(dirname(__DIR__, 2) . '/assets/js/mvc/models/store.js') ?>"></script>
 <script src="assets/js/mvc/models/analyticsModel.js"></script>
 <!-- MVC: views -->
 <script src="assets/js/mvc/views/authView.js"></script>
@@ -82,6 +82,6 @@
 <script src="assets/js/mvc/controllers/dispatchController.js"></script>
 <script src="assets/js/mvc/controllers/accountsController.js"></script>
 <!-- MVC: bootstrap -->
-<script src="assets/js/mvc/app.js"></script>
+<script src="assets/js/mvc/app.js?v=<?= filemtime(dirname(__DIR__, 2) . '/assets/js/mvc/app.js') ?>"></script>
 </body>
 </html>

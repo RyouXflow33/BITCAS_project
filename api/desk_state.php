@@ -19,6 +19,13 @@ try {
             echo json_encode(['ok' => false, 'error' => 'Expected JSON state']);
             exit;
         }
+        // A page that never read the saved list must not replace it. Older cached
+        // scripts do not send this flag, so they cannot wipe users or reports.
+        if (empty($payload['basedOnServerState'])) {
+            http_response_code(409);
+            echo json_encode(['ok' => false, 'error' => 'Reload the page before saving.']);
+            exit;
+        }
         $state = DeskStore::writeState($payload);
         echo json_encode(['ok' => true, 'state' => $state], JSON_UNESCAPED_SLASHES);
         exit;
