@@ -19,5 +19,7 @@ Options -Indexes
 
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
-    Header set Referrer-Policy "same-origin"
+    # Map tiles (OpenStreetMap) refuse requests that carry no Referer, so the site name must be sent
+    # to other sites. Only the origin goes out, never the full page address.
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
