@@ -57,3 +57,17 @@
         <div id="personnelList"></div>
     </section>
 </div>
+<script>
+if (!window.__bitcasPasswordToggle) {
+    window.__bitcasPasswordToggle = true;
+    document.querySelector('.accounts-layout').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-toggle-password]');
+        if (!button) return;
+        const input = document.getElementById(button.getAttribute('data-toggle-password'));
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        button.textContent = show ? 'Hide' : 'Show';
+    });
+}
+</script>

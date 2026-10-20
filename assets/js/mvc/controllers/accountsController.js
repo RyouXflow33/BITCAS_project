@@ -87,8 +87,10 @@ function initAccountsPage() {
 }
 
 function bindPasswordToggles() {
+    if (window.__bitcasPasswordToggle) return;
     const layout = document.querySelector('.accounts-layout');
     if (!layout) return;
+    window.__bitcasPasswordToggle = true;
     layout.addEventListener('click', (event) => {
         const button = event.target.closest('[data-toggle-password]');
         if (!button) return;
