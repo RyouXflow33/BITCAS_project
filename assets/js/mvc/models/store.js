@@ -4,6 +4,8 @@
 let state = null;
 let activeSession = window.__BITCAS_SESSION || null;
 let lastSyncedDeskSignature = '';
+let deskSaveInFlight = false;
+let deskSaveQueued = false;
 
 function deskStatePayload(source = state) {
     if (!source) return null;
@@ -22,23 +24,42 @@ function loadState() {
 
 function saveState(syncRemote = true) {
     if (!syncRemote || !state) return;
-    const payload = deskStatePayload(state);
-    const signature = JSON.stringify(payload);
-    if (signature === lastSyncedDeskSignature) return;
-    lastSyncedDeskSignature = signature;
-    pushDeskState(payload);
+    const signature = JSON.stringify(deskStatePayload(state));
+    if (signature === lastSyncedDeskSignature && !deskSaveQueued) return;
+    queueDeskSave();
 }
 
-async function pushDeskState(payload) {
-    try {
-        await fetch(DESK_STATE_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    } catch (error) {
-        // MySQL write retry will happen on next desk mutation.
+function queueDeskSave() {
+    if (!state) return;
+    if (deskSaveInFlight) {
+        deskSaveQueued = true;
+        return;
     }
+    const payload = deskStatePayload(state);
+    const signature = JSON.stringify(payload);
+    if (signature === lastSyncedDeskSignature) {
+        deskSaveQueued = false;
+        return;
+    }
+    deskSaveInFlight = true;
+    deskSaveQueued = false;
+    fetch(DESK_STATE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then((response) => {
+        if (response.ok && signature === JSON.stringify(deskStatePayload(state))) {
+            lastSyncedDeskSignature = signature;
+        }
+    }).catch(() => {
+        // The next desk change sends the current list again.
+    }).finally(() => {
+        deskSaveInFlight = false;
+        if (deskSaveQueued || signature !== JSON.stringify(deskStatePayload(state))) {
+            deskSaveQueued = false;
+            queueDeskSave();
+        }
+    });
 }
 
 async function refreshDeskState() {
@@ -47,6 +68,7 @@ async function refreshDeskState() {
         if (!response.ok) return false;
         const body = await response.json();
         if (!body || !body.ok || !body.state) return false;
+        if (deskSaveInFlight || deskSaveQueued) return false;
         if (!state) {
             state = loadState();
             ensureStateShape(state);
@@ -327,6 +349,22 @@ function setDeskUserActive(userId, active) {
         return { error: 'Keep at least one active super admin.' };
     }
     user.active = Boolean(active);
+    saveState();
+    return { user };
+}
+
+function deleteDeskUser(userId) {
+    if (!isSuperAdmin()) return { error: 'Only the super admin can delete a desk account.' };
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) return { error: 'Account not found.' };
+    if (user.id === currentActor().userId) {
+        return { error: 'You cannot delete the account you are using.' };
+    }
+    const otherAdmins = state.users.filter((item) => item.role === 'super_admin' && item.id !== user.id);
+    if (user.role === 'super_admin' && !otherAdmins.length) {
+        return { error: 'Keep at least one super admin.' };
+    }
+    state.users = state.users.filter((item) => item.id !== userId);
     saveState();
     return { user };
 }

@@ -798,7 +798,7 @@ class RemoteIngestClient:
             requests.post(
                 self.save_data_url,
                 json=body,
-                headers={'X-API-Key': self.api_key},
+                headers={'X-API-Key': self.api_key, 'User-Agent': 'Mozilla/5.0 (BITCAS-Pi)'},
                 timeout=8
             )
         except Exception as error:
@@ -809,7 +809,7 @@ class RemoteIngestClient:
             with open(path, 'rb') as handle:
                 requests.post(
                     self.upload_snapshot_url,
-                    headers={'X-API-Key': self.api_key},
+                    headers={'X-API-Key': self.api_key, 'User-Agent': 'Mozilla/5.0 (BITCAS-Pi)'},
                     data={
                         'camera_id': camera_id,
                         'congestion_level': level,

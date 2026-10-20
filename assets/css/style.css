@@ -882,6 +882,17 @@ button {
     width: 180px;
 }
 
+.password-field {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.password-field input {
+    flex: 1;
+    min-width: 0;
+}
+
 .form-grid {
     padding: 14px;
     display: grid;

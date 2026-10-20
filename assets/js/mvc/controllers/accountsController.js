@@ -2,6 +2,7 @@
 
 function initAccountsPage() {
     renderAccountsPage();
+    bindPasswordToggles();
 
     const changeForm = document.getElementById('changePasswordForm');
     if (changeForm) {
@@ -67,7 +68,34 @@ function initAccountsPage() {
                     return;
                 }
                 renderAccountsPage();
+                return;
+            }
+            const remove = event.target.closest('[data-delete-user]');
+            if (remove) {
+                const user = state.users.find((item) => item.id === remove.dataset.deleteUser);
+                const name = user ? user.username : 'this account';
+                if (!window.confirm(`Delete the desk login for ${name}?`)) return;
+                const result = deleteDeskUser(remove.dataset.deleteUser);
+                if (result.error) {
+                    window.alert(result.error);
+                    return;
+                }
+                renderAccountsPage();
             }
         });
     }
+}
+
+function bindPasswordToggles() {
+    const layout = document.querySelector('.accounts-layout');
+    if (!layout) return;
+    layout.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-toggle-password]');
+        if (!button) return;
+        const input = document.getElementById(button.dataset.togglePassword);
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        button.textContent = show ? 'Hide' : 'Show';
+    });
 }

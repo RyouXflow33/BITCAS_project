@@ -33,9 +33,13 @@ function renderPersonnelList() {
                     <small>${user.username} · ${roleLabel(user.role)} · ${status}</small>
                 </div>
                 <div class="row-actions">
-                    <input type="password" data-reset-password="${user.id}" placeholder="Temporary password" autocomplete="new-password">
+                    <div class="password-field">
+                        <input id="resetPassword-${user.id}" type="password" data-reset-password="${user.id}" placeholder="Temporary password" autocomplete="new-password">
+                        <button class="btn tiny" type="button" data-toggle-password="resetPassword-${user.id}">Show</button>
+                    </div>
                     <button class="btn tiny" type="button" data-reset-user="${user.id}">Reset password</button>
                     <button class="btn tiny" type="button" data-toggle-user="${user.id}" ${self ? 'disabled' : ''}>${user.active ? 'Disable' : 'Enable'}</button>
+                    <button class="btn tiny" type="button" data-delete-user="${user.id}" ${self ? 'disabled' : ''}>${icon('trash')} Delete</button>
                 </div>
             </div>
         `;

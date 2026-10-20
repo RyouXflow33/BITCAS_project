@@ -12,11 +12,17 @@
         <form class="form-grid" id="changePasswordForm">
             <div>
                 <label for="currentPassword">Current password</label>
-                <input id="currentPassword" type="password" autocomplete="current-password" required>
+                <div class="password-field">
+                    <input id="currentPassword" type="password" autocomplete="current-password" required>
+                    <button class="btn tiny" type="button" data-toggle-password="currentPassword">Show</button>
+                </div>
             </div>
             <div>
                 <label for="nextPassword">New password</label>
-                <input id="nextPassword" type="password" autocomplete="new-password" required minlength="8">
+                <div class="password-field">
+                    <input id="nextPassword" type="password" autocomplete="new-password" required minlength="8">
+                    <button class="btn tiny" type="button" data-toggle-password="nextPassword">Show</button>
+                </div>
             </div>
             <p class="form-error" id="changePasswordError" hidden></p>
             <div class="full-width">
@@ -38,7 +44,10 @@
             </div>
             <div>
                 <label for="deskPassword">Temporary password</label>
-                <input id="deskPassword" type="password" required minlength="8" autocomplete="new-password">
+                <div class="password-field">
+                    <input id="deskPassword" type="password" required minlength="8" autocomplete="new-password">
+                    <button class="btn tiny" type="button" data-toggle-password="deskPassword">Show</button>
+                </div>
             </div>
             <p class="form-error" id="addDeskUserError" hidden></p>
             <div class="full-width">
