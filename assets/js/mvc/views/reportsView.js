@@ -33,14 +33,14 @@ function renderReportsPage() {
 
     cards.innerHTML = reports.map((report) => {
         return `
-            <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${report.id}">
+            <button class="report-card ${severityBorderClass(report.severity)} ${selectedReportId === report.id ? 'selected' : ''}" data-report-id="${escapeHtml(report.id)}">
                 <div class="report-card-main">
                     <strong>${icon('camera')} ${escapeHtml(report.id)} · ${escapeHtml(report.location)}</strong>
                     <small>Camera · ${report.vehicleCount} veh · ${report.congestionScore}% · ${formatDateTime(report.createdAtIso)}</small>
                 </div>
                 <div class="report-card-badges">
-                    <span class="tag ${severityTagClass(report.severity)}">${report.severity}</span>
-                    <span class="tag ${statusTagClass(report.status)}">${report.status === 'Open' ? 'Unassigned' : report.status}</span>
+                    <span class="tag ${severityTagClass(report.severity)}">${escapeHtml(report.severity)}</span>
+                    <span class="tag ${statusTagClass(report.status)}">${report.status === 'Open' ? 'Unassigned' : escapeHtml(report.status)}</span>
                     ${report.falsePositive ? '<span class="tag status-open">Not congestion</span>' : ''}
                 </div>
             </button>
@@ -92,20 +92,20 @@ function fillReportEditor(reportId) {
         <div class="case-evidence">${renderEvidenceHtml(report)}</div>
         <div class="report-meta-strip">
             <div><span>Opened</span><strong>${formatDateTime(report.createdAtIso)}</strong></div>
-            <div><span>Desk</span><strong>${userLabel(report.updatedByUserId || report.createdByUserId)}</strong></div>
+            <div><span>Desk</span><strong>${escapeHtml(userLabel(report.updatedByUserId || report.createdByUserId))}</strong></div>
             <div><span>Source</span><strong>Pi camera · 3-interval snapshot</strong></div>
-            <div><span>Camera</span><strong>${report.cameraId || (camera ? 'CAM-VILLAMONTE-01' : '--')}</strong></div>
-            <div><span>Officer</span><strong>${officer}</strong></div>
+            <div><span>Camera</span><strong>${escapeHtml(report.cameraId || (camera ? 'CAM-VILLAMONTE-01' : '--'))}</strong></div>
+            <div><span>Officer</span><strong>${escapeHtml(officer)}</strong></div>
         </div>
         <div class="report-meta-strip">
-            <div><span>Congestion</span><strong>${report.severity} · ${report.congestionScore}%</strong></div>
+            <div><span>Congestion</span><strong>${escapeHtml(report.severity)} · ${report.congestionScore}%</strong></div>
             <div><span>Vehicles in frame</span><strong>${report.vehicleCount}</strong></div>
             <div><span>Occupancy</span><strong>${occupancy}</strong></div>
             <div><span>Avg speed</span><strong>${speed}</strong></div>
         </div>
         <div class="case-log">
             <span>System log</span>
-            <p>${report.context || '—'}</p>
+            <p>${escapeHtml(report.context || '—')}</p>
         </div>
     `;
 }

@@ -9,8 +9,9 @@ final class Database {
         $defaults = [
             'host' => '127.0.0.1',
             'port' => 3306,
-            'database' => 'u260832388_bitcas_db',
-            'username' => 'u260832388_bitcas',
+            // Placeholders only. The real values live in api/database.local.php (not in git).
+            'database' => 'bitcas_db',
+            'username' => 'bitcas',
             'password' => '',
             'ingest_api_key' => ''
         ];
@@ -51,7 +52,12 @@ final class Database {
             $pdo = new PDO($dsn, $user, $pass, $options);
         } catch (PDOException $firstError) {
             try {
-                // Local XAMPP fallback when running on the laptop before uploading to Hostinger.
+                // DEVELOPMENT ONLY. This runs only when the configured database refuses the login,
+                // which on the laptop means "XAMPP with no api/database.local.php yet". XAMPP ships
+                // with an empty root password, so there is no secret in this line. On Hostinger the
+                // same attempt fails (root is not allowed there) and the app reports "database
+                // unavailable" instead. It uses the host from the config, never a remote address.
+                // To remove the fallback entirely, delete this catch block.
                 $localDb = 'bitcas_db';
                 $serverDsn = sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $host, $port);
                 $bootstrap = new PDO($serverDsn, 'root', '', $options);

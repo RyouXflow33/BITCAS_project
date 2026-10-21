@@ -108,7 +108,7 @@ function renderSnapshotPanel() {
         preview.innerHTML = `<div class="snapshot-placeholder">${icon('camera-off')}<span>No evidence still yet</span></div>`;
         meta.textContent = 'A still is saved after HEAVY holds for 3 readings';
     } else {
-        preview.innerHTML = `<img src="${latestUrl}" alt="Traffic evidence still">`;
+        preview.innerHTML = `<img src="${escapeHtml(latestUrl)}" alt="Traffic evidence still">`;
         const latestReport = shots.find((report) => report.snapshotUrl === latestUrl);
         meta.textContent = latestReport
             ? `Last still: ${formatDateTime(latestReport.createdAtIso)} | ${latestReport.severity}`
@@ -122,7 +122,7 @@ function renderSnapshotPanel() {
 
     list.innerHTML = shots.slice(0, 5).map((report) => `
         <div class="snapshot-item">
-            <strong>${report.severity} (${report.congestionScore}%)</strong>
+            <strong>${escapeHtml(report.severity)} (${report.congestionScore}%)</strong>
             <small>${formatDateTime(report.createdAtIso)}</small>
         </div>
     `).join('');

@@ -65,11 +65,11 @@ function renderDispatchQueue() {
                     <strong>${escapeHtml(report.id)} · ${escapeHtml(report.location)}</strong>
                     <span>Camera · ${report.vehicleCount} veh · ${report.congestionScore}%</span>
                     <div class="dispatch-meta">
-                        <span class="tag ${statusTagClass(report.status)}">${report.status}</span>
+                        <span class="tag ${statusTagClass(report.status)}">${escapeHtml(report.status)}</span>
                         <span class="${sla && sla.breached ? 'sla-breach' : 'sla-ok'}">${slaText}</span>
                     </div>
                 </div>
-                <button class="btn ${selectedDispatchReportId === report.id ? 'primary' : 'ghost'} tiny" data-select-report="${report.id}">Select</button>
+                <button class="btn ${selectedDispatchReportId === report.id ? 'primary' : 'ghost'} tiny" data-select-report="${escapeHtml(report.id)}">Select</button>
             </div>
         `;
     }).join('');
@@ -91,7 +91,7 @@ function renderSelectedDispatchReport() {
     const officer = assignment ? state.officers.find((item) => item.id === assignment.officerId) : null;
     selection.textContent = report.id;
     const evidence = report.snapshotUrl
-        ? `<img src="${report.snapshotUrl}" alt="Evidence for ${report.id}">`
+        ? `<img src="${escapeHtml(report.snapshotUrl)}" alt="Evidence for ${escapeHtml(report.id)}">`
         : '<div class="report-evidence-empty">Camera case — snapshot lands here after 3 HEAVY intervals.</div>';
     target.innerHTML = `
         <div class="selected-report">
@@ -103,7 +103,7 @@ function renderSelectedDispatchReport() {
             <div class="selected-report-meta">
                 <span class="tag ${severityTagClass(report.severity)}">${priorityLabel(report.severity)} ${report.severity}</span>
                 <span>Pi camera · ${report.vehicleCount} veh · ${report.congestionScore}%</span>
-                <span>${officer ? `Assigned: ${officer.id} ${officer.name}` : 'Unassigned'}</span>
+                <span>${officer ? `Assigned: ${escapeHtml(officer.id)} ${escapeHtml(officer.name)}` : 'Unassigned'}</span>
                 <a class="btn tiny ghost" href="?page=incidents&report=${encodeURIComponent(report.id)}">Open case file</a>
             </div>
         </div>
@@ -135,11 +135,11 @@ function renderOfficerPool() {
             <div class="recommendation ${recommend ? 'recommended' : ''}">
                 <div class="score ${canAssign ? '' : 'muted'}">${score}</div>
                 <div>
-                    <strong>${officer.id} · ${officer.fullName}</strong>
-                    <p>${officer.rank} · ${officer.zone}${recommend ? ' · Recommended' : ''}</p>
-                    <small>${reasons.join(' · ')}</small>
+                    <strong>${escapeHtml(officer.id)} · ${escapeHtml(officer.fullName)}</strong>
+                    <p>${escapeHtml(officer.rank)} · ${escapeHtml(officer.zone)}${recommend ? ' · Recommended' : ''}</p>
+                    <small>${reasons.map(escapeHtml).join(' · ')}</small>
                 </div>
-                <button class="btn ${canAssign && !alreadyAssigned ? 'primary' : 'ghost'} tiny" data-assign-officer="${officer.id}" ${canAssign && !alreadyAssigned ? '' : 'disabled'}>${icon(alreadyAssigned ? 'check' : 'user-check')} ${alreadyAssigned ? 'Assigned' : 'Assign'}</button>
+                <button class="btn ${canAssign && !alreadyAssigned ? 'primary' : 'ghost'} tiny" data-assign-officer="${escapeHtml(officer.id)}" ${canAssign && !alreadyAssigned ? '' : 'disabled'}>${icon(alreadyAssigned ? 'check' : 'user-check')} ${alreadyAssigned ? 'Assigned' : 'Assign'}</button>
             </div>
         `;
     }).join('');
@@ -181,13 +181,13 @@ function renderAssignmentCard(assignment) {
             : `${formatDuration(Math.max(0, Math.round(sla.remaining)))} left`;
 
     return `
-        <div class="kanban-card ${selectedAssignmentId === assignment.id ? 'selected' : ''} ${sla.breached ? 'sla-hot' : ''}" data-assignment-id="${assignment.id}">
+        <div class="kanban-card ${selectedAssignmentId === assignment.id ? 'selected' : ''} ${sla.breached ? 'sla-hot' : ''}" data-assignment-id="${escapeHtml(assignment.id)}">
             <strong>${escapeHtml(assignment.id)}</strong>
             <span>${escapeHtml(report ? report.location : assignment.reportId)}</span>
-            <span>${officer ? officer.name : assignment.officerId} · ${assignment.reportId}</span>
-            ${assignment.createdByUserId ? `<span>Assigned by ${userLabel(assignment.createdByUserId)}</span>` : ''}
+            <span>${escapeHtml(officer ? officer.name : assignment.officerId)} · ${escapeHtml(assignment.reportId)}</span>
+            ${assignment.createdByUserId ? `<span>Assigned by ${escapeHtml(userLabel(assignment.createdByUserId))}</span>` : ''}
             <small class="${sla.breached ? 'sla-breach' : 'sla-ok'}">${slaText}</small>
-            ${nextLabel ? `<button class="btn primary tiny" data-advance-assignment="${assignment.id}">${nextLabel}</button>` : ''}
+            ${nextLabel ? `<button class="btn primary tiny" data-advance-assignment="${escapeHtml(assignment.id)}">${nextLabel}</button>` : ''}
         </div>
     `;
 }
@@ -207,14 +207,14 @@ function renderOfficerRoster() {
         const perf = officerPerformance(officer.id);
         const onShift = isOfficerOnShift(officer);
         return `
-            <button class="roster-card ${selectedOfficerId === officer.id ? 'selected' : ''}" data-select-officer="${officer.id}">
-                <div class="roster-avatar">${initialsFromName(officer.fullName)}</div>
+            <button class="roster-card ${selectedOfficerId === officer.id ? 'selected' : ''}" data-select-officer="${escapeHtml(officer.id)}">
+                <div class="roster-avatar">${escapeHtml(initialsFromName(officer.fullName))}</div>
                 <div>
-                    <strong>${officer.fullName}</strong>
-                    <small>${officer.id} · ${officer.rank}</small>
+                    <strong>${escapeHtml(officer.fullName)}</strong>
+                    <small>${escapeHtml(officer.id)} · ${escapeHtml(officer.rank)}</small>
                     <div class="dispatch-meta">
-                        <span class="tag ${officerStatusTagClass(officer.status)}">${officer.status}</span>
-                        <span>${officer.zone}</span>
+                        <span class="tag ${officerStatusTagClass(officer.status)}">${escapeHtml(officer.status)}</span>
+                        <span>${escapeHtml(officer.zone)}</span>
                         <span>${onShift ? 'On shift' : 'Off shift'}</span>
                     </div>
                 </div>
@@ -243,29 +243,29 @@ function renderOfficerProfile() {
 
     target.innerHTML = `
         <div class="profile-hero">
-            <div class="roster-avatar lg">${initialsFromName(officer.fullName)}</div>
+            <div class="roster-avatar lg">${escapeHtml(initialsFromName(officer.fullName))}</div>
             <div>
-                <strong>${officer.fullName}</strong>
-                <span>${officer.rank} · ${officer.id}</span>
+                <strong>${escapeHtml(officer.fullName)}</strong>
+                <span>${escapeHtml(officer.rank)} · ${escapeHtml(officer.id)}</span>
                 <div class="dispatch-meta">
-                    <span class="tag ${officerStatusTagClass(officer.status)}">${officer.status}</span>
+                    <span class="tag ${officerStatusTagClass(officer.status)}">${escapeHtml(officer.status)}</span>
                     <span>${isOfficerOnShift(officer) ? 'On shift now' : 'Off shift'}</span>
                 </div>
             </div>
         </div>
         <div class="report-meta-strip">
-            <div><span>Zone / beat</span><strong>${officer.zone}</strong></div>
-            <div><span>Shift</span><strong>${officer.shiftStart}–${officer.shiftEnd}</strong></div>
-            <div><span>Rest day</span><strong>${officer.restDay}</strong></div>
-            <div><span>Radio</span><strong>${officer.radio}</strong></div>
+            <div><span>Zone / beat</span><strong>${escapeHtml(officer.zone)}</strong></div>
+            <div><span>Shift</span><strong>${escapeHtml(officer.shiftStart)}–${escapeHtml(officer.shiftEnd)}</strong></div>
+            <div><span>Rest day</span><strong>${escapeHtml(officer.restDay)}</strong></div>
+            <div><span>Radio</span><strong>${escapeHtml(officer.radio)}</strong></div>
         </div>
         <div class="profile-block">
             <span>Contact</span>
-            <strong>${officer.contact}</strong>
+            <strong>${escapeHtml(officer.contact)}</strong>
         </div>
         <div class="profile-block">
             <span>Skills</span>
-            <strong>${officer.skills.join(' · ')}</strong>
+            <strong>${(officer.skills || []).map(escapeHtml).join(' · ')}</strong>
         </div>
         <div class="profile-block">
             <span>Current assignment</span>

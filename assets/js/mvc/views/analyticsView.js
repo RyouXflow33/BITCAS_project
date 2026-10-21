@@ -170,8 +170,8 @@ function renderVehicleMix(mix) {
 
     target.innerHTML = mix.map((item) => `
         <div class="mix-row">
-            <span class="mix-label">${item.type}</span>
-            <div class="progress"><i class="mix-${item.type}" style="width:${item.percent}%"></i></div>
+            <span class="mix-label">${escapeHtml(item.type)}</span>
+            <div class="progress"><i class="mix-${escapeHtml(item.type)}" style="width:${item.percent}%"></i></div>
             <strong>${item.percent}%</strong>
             <small>${item.count}</small>
         </div>
@@ -189,7 +189,7 @@ function renderDirectionSplit(split, capability) {
 
     target.innerHTML = split.map((item) => `
         <div class="mix-row">
-            <span class="mix-label">${item.direction}</span>
+            <span class="mix-label">${escapeHtml(item.direction)}</span>
             <div class="progress"><i style="width:${item.percent}%"></i></div>
             <strong>${item.percent}%</strong>
             <small>${item.count}</small>
@@ -349,7 +349,7 @@ function renderHotspotRanking() {
     const ranked = getHotspotRankingData(6);
     target.innerHTML = ranked.length
         ? ranked.map((item, index) => `
-            <div class="rank"><b>${String(index + 1).padStart(2, '0')}</b><div><strong>${item.location}</strong><small>${classifyCongestion(item.avg)} | ${item.reports} report${item.reports === 1 ? '' : 's'}</small></div><span>${item.avg}%</span></div>
+            <div class="rank"><b>${String(index + 1).padStart(2, '0')}</b><div><strong>${escapeHtml(item.location)}</strong><small>${classifyCongestion(item.avg)} | ${item.reports} report${item.reports === 1 ? '' : 's'}</small></div><span>${item.avg}%</span></div>
         `).join('')
         : '<div class="chart-empty">No reports yet.</div>';
 
@@ -371,7 +371,7 @@ function renderClassificationBreakdown() {
         const percent = Math.round((item.count / total) * 100);
         return `
             <div>
-                <span>${item.label}</span><strong>${item.count}</strong>
+                <span>${escapeHtml(item.label)}</span><strong>${item.count}</strong>
                 <div class="progress"><i class="sev-fill-${item.label.toLowerCase()}" style="width:${percent}%"></i></div>
             </div>
         `;
