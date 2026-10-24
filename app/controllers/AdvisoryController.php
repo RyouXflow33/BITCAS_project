@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/models/AdvisoryStore.php';
 require_once dirname(__DIR__) . '/models/Auth.php';
+require_once dirname(__DIR__) . '/models/InputRules.php';
 
 final class AdvisoryController {
     public function handle(): void {
@@ -62,9 +63,15 @@ final class AdvisoryController {
                 echo json_encode(['ok' => false, 'error' => 'Level must be Low, Moderate, or High']);
                 return;
             }
-            if ($area === '' || strlen($area) > 80 || $message === '' || strlen($message) > 280) {
-                http_response_code(400);
-                echo json_encode(['ok' => false, 'error' => 'Area and message are required']);
+            try {
+                $area = InputRules::shortText($area, 'Area', 80, true);
+                $message = InputRules::note($message, 'Message', 280);
+                if ($message === '') {
+                    throw new InvalidArgumentException('Message is required.');
+                }
+            } catch (InvalidArgumentException $error) {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
                 return;
             }
 

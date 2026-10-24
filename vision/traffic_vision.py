@@ -507,7 +507,13 @@ class VehicleDetector:
 # --------------------------------------------------------------------------
 
 class Track:
-    """One vehicle followed across frames."""
+    """
+    One vehicle followed across frames.
+
+    pixel_history and world_history are deques (fixed-length queues) of (time, x, y),
+    so speed is fit over recent points instead of one noisy jump. class_votes is a
+    deque of the last 8 class names. counted_lines is a set, so each line counts once.
+    """
 
     __slots__ = ('id', 'class_name', 'class_votes', 'bbox', 'centroid', 'last_seen', 'misses',
                  'hits', 'pixel_history', 'world_history', 'counted_lines', 'speed_kph', 'speed_pps')
@@ -549,9 +555,10 @@ class CentroidTracker:
     """
     Nearest-centroid association keyed by track ID.
 
-    v1 keyed its track map by detection index, which is meaningless between
-    frames. Tracks here own their own history, which is what makes per-vehicle
-    counting and least-squares speed possible.
+    self.tracks is a dict: track id -> Track. Matching uses that map, not the
+    position of a box in the current frame (that index changes every frame).
+    Each Track keeps its own history, which is what makes one count per vehicle
+    and a least-squares speed possible.
     """
 
     def __init__(self, config, calibration):
@@ -671,6 +678,9 @@ class CongestionModel:
     road is busy, so it is scaled by `busy_occupancy` until the ROI is the road.
     Slowness uses km/h after speed calibration, otherwise pixel speed so a
     stopped queue still raises the score.
+
+    _samples is a deque of (time, vehicle count) inside the smoothing window.
+    Old samples drop off the left as time passes.
     """
 
     def __init__(self, config):

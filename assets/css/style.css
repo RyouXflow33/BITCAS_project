@@ -100,6 +100,30 @@ button {
     font-size: 12px;
 }
 
+.login-ok {
+    color: var(--green, #1e7a46);
+    font-size: 12px;
+}
+
+.log-list {
+    display: grid;
+    gap: 8px;
+}
+
+.log-row {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.log-row span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
 .app-shell {
     display: flex;
     min-height: 100vh;

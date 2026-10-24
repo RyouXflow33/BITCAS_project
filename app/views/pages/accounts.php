@@ -13,14 +13,14 @@
             <div>
                 <label for="currentPassword">Current password</label>
                 <div class="password-field">
-                    <input id="currentPassword" type="password" autocomplete="current-password" required>
+                    <input id="currentPassword" type="password" autocomplete="current-password" required maxlength="64">
                     <button class="btn tiny" type="button" data-toggle-password="currentPassword">Show</button>
                 </div>
             </div>
             <div>
                 <label for="nextPassword">New password</label>
                 <div class="password-field">
-                    <input id="nextPassword" type="password" autocomplete="new-password" required minlength="8">
+                    <input id="nextPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="64">
                     <button class="btn tiny" type="button" data-toggle-password="nextPassword">Show</button>
                 </div>
             </div>
@@ -36,16 +36,18 @@
         <form class="form-grid" id="addDeskUserForm">
             <div>
                 <label for="deskFullName">Full name</label>
-                <input id="deskFullName" type="text" required placeholder="Maria Santos" autocomplete="name">
+                <input id="deskFullName" type="text" required maxlength="60" placeholder="Maria Santos" autocomplete="name">
+                <small>1-60 letters. No numbers.</small>
             </div>
             <div>
                 <label for="deskUsername">Username</label>
-                <input id="deskUsername" type="text" required placeholder="msantos" autocomplete="off">
+                <input id="deskUsername" type="text" required maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" placeholder="msantos" autocomplete="off">
+                <small>3-32 characters: letters, numbers, dot, dash, or underscore.</small>
             </div>
             <div>
                 <label for="deskPassword">Temporary password</label>
                 <div class="password-field">
-                    <input id="deskPassword" type="password" required minlength="8" autocomplete="new-password">
+                    <input id="deskPassword" type="password" required minlength="8" maxlength="64" autocomplete="new-password">
                     <button class="btn tiny" type="button" data-toggle-password="deskPassword">Show</button>
                 </div>
             </div>

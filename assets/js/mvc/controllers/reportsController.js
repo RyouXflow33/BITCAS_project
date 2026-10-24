@@ -59,8 +59,18 @@ function bindReportActions() {
             const report = findReport(selectedReportId);
             if (!report) return;
 
+            const editorError = document.getElementById('reportEditorError');
+            const showEditorError = (message) => {
+                if (!editorError) return;
+                editorError.hidden = !message;
+                editorError.textContent = message || '';
+            };
             if (isCameraReport(report)) {
-                if (!updateCameraReportNotes(selectedReportId, getValue('editNotes'))) return;
+                const noted = updateCameraReportNotes(selectedReportId, getValue('editNotes'));
+                if (!noted || noted.error) {
+                    showEditorError(noted && noted.error ? noted.error : 'Could not save remarks.');
+                    return;
+                }
             } else {
                 const updated = updateReport(selectedReportId, {
                     location: getValue('editLocation'),
@@ -70,8 +80,12 @@ function bindReportActions() {
                     context: getValue('editContext'),
                     notes: getValue('editNotes')
                 });
-                if (!updated) return;
+                if (!updated || updated.error) {
+                    showEditorError(updated && updated.error ? updated.error : 'Could not save the report.');
+                    return;
+                }
             }
+            showEditorError('');
 
             renderReportsPage();
             renderGlobalCounters();

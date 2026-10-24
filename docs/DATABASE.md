@@ -10,6 +10,15 @@ Two kinds of data live here:
 - **Desk data** comes from people using the dashboard through `api/desk_state.php`, `api/desk_users.php`
   and `api/auth.php`. These need a signed-in session.
 
+## Data structures
+
+The system is a set of tables plus a few structures in the vision code. There is no separate "data structure module" because each one is the storage for a job:
+
+- **MySQL tables** (this file). A row is one camera reading, one hour, one account, one report, or one assignment. The Logs page reads `traffic_hourly`, `reports`, and `assignments` and shows the date and time already stored on those rows.
+- **Track map** in `vision/traffic_vision.py`. `CentroidTracker.tracks` is a dictionary from track id to one `Track`. That is how a vehicle keeps its identity from frame to frame.
+- **Deques** on each `Track`: a fixed-length queue of recent positions for speed, and a queue of recent class names so the label does not flicker. `CongestionModel` uses another deque to average the vehicle count over the last few seconds.
+- **Append-only files** on the Pi (`traffic_history.jsonl`, `traffic_hourly.jsonl`). One JSON line per minute or hour. The database is a copy of those lines.
+
 ## Traffic tables (written by the Pi)
 
 | Table | What one row is | Who writes it | How long it is kept |

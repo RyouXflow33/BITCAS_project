@@ -31,11 +31,12 @@
                 <div class="form-grid">
                     <div>
                         <label for="editLocation">Location</label>
-                        <input id="editLocation" type="text" required>
+                        <input id="editLocation" type="text" required maxlength="160">
                     </div>
                     <div>
                         <label for="editVehicles">Vehicle count</label>
-                        <input id="editVehicles" type="number" min="0" required>
+                        <input id="editVehicles" type="number" min="0" max="500" step="1" inputmode="numeric" required>
+                        <small>Whole number, 0-500.</small>
                     </div>
                     <div>
                         <label for="editSeverity">Congestion class</label>
@@ -58,7 +59,8 @@
             <input type="hidden" id="editContext">
             <div class="full-width">
                 <label for="editNotes">Desk remarks</label>
-                <textarea id="editNotes" rows="3" placeholder="What the traffic desk observed or instructed"></textarea>
+                <textarea id="editNotes" rows="3" maxlength="500" placeholder="What the traffic desk observed or instructed"></textarea>
+                <p class="form-error" id="reportEditorError" hidden></p>
             </div>
             <div class="editor-actions">
                 <a class="btn primary" id="assignOfficerLink" href="?page=dispatch"><?= icon('user-check') ?> Assign officer</a>

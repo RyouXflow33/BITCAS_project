@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/InputRules.php';
 
+// Desk rows (accounts, reports, officers, assignments). Accounts change one action at a time.
+// Reports, officers, and assignments are replaced by id from the signed-in desk save.
 final class DeskStore {
     private const SEEDED_ADMIN_HASH = '85e507903d4c970932a88f72039b779c878bc8f7c849aeb662ceebf228e19f80';
 
@@ -208,17 +211,25 @@ final class DeskStore {
     // Each method throws InvalidArgumentException with a message the desk can show.
 
     public static function createUser(string $fullName, string $username, string $password, ?string $createdBy): array {
-        $fullName = trim($fullName);
-        $username = strtolower(trim($username));
-        if ($fullName === '' || strlen($fullName) > 120) {
-            throw new InvalidArgumentException('Full name is required.');
-        }
-        if (!preg_match('/^[a-z0-9._-]{3,32}$/', $username)) {
-            throw new InvalidArgumentException('Username must be 3-32 characters: letters, numbers, dot, dash, or underscore.');
-        }
-        if (strlen($password) < 8) {
-            throw new InvalidArgumentException('Temporary password must be at least 8 characters.');
-        }
+        return self::insertUser($fullName, $username, $password, $createdBy, true, true);
+    }
+
+    // Public registration. The account cannot sign in until a super admin enables it.
+    public static function registerUser(string $fullName, string $username, string $password): array {
+        return self::insertUser($fullName, $username, $password, null, false, false);
+    }
+
+    private static function insertUser(
+        string $fullName,
+        string $username,
+        string $password,
+        ?string $createdBy,
+        bool $active,
+        bool $mustChangePassword
+    ): array {
+        $fullName = InputRules::personName($fullName, 'Full name');
+        $username = InputRules::username($username);
+        $password = InputRules::password($password, $mustChangePassword ? 'Temporary password' : 'Password');
 
         $pdo = self::pdo();
         self::ensureSeedAdmin($pdo);
@@ -233,7 +244,7 @@ final class DeskStore {
 
         $insert = $pdo->prepare(
             'INSERT INTO users (id, full_name, username, password_hash, role, active, must_change_password, created_by, created_at_iso)
-             VALUES (:id, :full_name, :username, :password_hash, :role, 1, 1, :created_by, :created_at_iso)'
+             VALUES (:id, :full_name, :username, :password_hash, :role, :active, :must_change, :created_by, :created_at_iso)'
         );
         $insert->execute([
             ':id' => $id,
@@ -241,6 +252,8 @@ final class DeskStore {
             ':username' => $username,
             ':password_hash' => Auth::hashPassword($password),
             ':role' => 'traffic_desk',
+            ':active' => $active ? 1 : 0,
+            ':must_change' => $mustChangePassword ? 1 : 0,
             ':created_by' => $createdBy,
             ':created_at_iso' => gmdate('Y-m-d\TH:i:s\Z')
         ]);
@@ -248,9 +261,7 @@ final class DeskStore {
     }
 
     public static function resetPassword(string $userId, string $password): array {
-        if (strlen($password) < 8) {
-            throw new InvalidArgumentException('Temporary password must be at least 8 characters.');
-        }
+        $password = InputRules::password($password, 'Temporary password');
         $pdo = self::pdo();
         self::requireUserRow($pdo, $userId);
         $update = $pdo->prepare('UPDATE users SET password_hash = :hash, must_change_password = 1 WHERE id = :id');
@@ -259,9 +270,7 @@ final class DeskStore {
     }
 
     public static function changeOwnPassword(string $userId, string $current, string $next): array {
-        if (strlen($next) < 8) {
-            throw new InvalidArgumentException('New password must be at least 8 characters.');
-        }
+        $next = InputRules::password($next, 'New password');
         $pdo = self::pdo();
         $row = self::requireUserRow($pdo, $userId);
         if (!Auth::verifyPassword($pdo, $row, $current)) {
@@ -472,25 +481,33 @@ final class DeskStore {
                 continue;
             }
             $createdAt = (string)($report['createdAtIso'] ?? gmdate('Y-m-d\TH:i:s\Z'));
+            $severity = (string)($report['severity'] ?? 'High');
+            if (!in_array($severity, ['Low', 'Moderate', 'High', 'Severe'], true)) {
+                throw new InvalidArgumentException('Congestion class must be Low, Moderate, or High.');
+            }
+            $status = (string)($report['status'] ?? 'Open');
+            if (!in_array($status, ['Open', 'Assigned', 'Resolved'], true)) {
+                throw new InvalidArgumentException('Report status must be Open, Assigned, or Resolved.');
+            }
             $stmt->execute([
                 ':id' => (string)$report['id'],
-                ':location' => (string)($report['location'] ?? 'Villamonte Street Intersection'),
+                ':location' => InputRules::shortText((string)($report['location'] ?? ''), 'Location', 160, true),
                 ':camera_id' => !empty($report['cameraId']) ? (string)$report['cameraId'] : null,
-                ':severity' => (string)($report['severity'] ?? 'High'),
-                ':congestion_score' => max(0, min(100, (int)($report['congestionScore'] ?? 0))),
-                ':vehicle_count' => max(0, (int)($report['vehicleCount'] ?? 0)),
+                ':severity' => $severity,
+                ':congestion_score' => InputRules::wholeNumber($report['congestionScore'] ?? 0, 'Congestion score', 0, 100),
+                ':vehicle_count' => InputRules::wholeNumber($report['vehicleCount'] ?? 0, 'Vehicle count', 0, 500),
                 ':occupancy_pct' => isset($report['occupancyPct']) && is_numeric($report['occupancyPct'])
                     ? (float)$report['occupancyPct']
                     : null,
                 ':avg_speed_kph' => isset($report['avgSpeedKph']) && is_numeric($report['avgSpeedKph'])
                     ? (float)$report['avgSpeedKph']
                     : null,
-                ':status' => (string)($report['status'] ?? 'Open'),
+                ':status' => $status,
                 ':lat' => isset($report['lat']) && is_numeric($report['lat']) ? (float)$report['lat'] : 10.6642688,
                 ':lng' => isset($report['lng']) && is_numeric($report['lng']) ? (float)$report['lng'] : 122.9675934,
                 ':source' => (string)($report['source'] ?? 'Vision system'),
-                ':context' => (string)($report['context'] ?? ''),
-                ':notes' => (string)($report['notes'] ?? ''),
+                ':context' => InputRules::note((string)($report['context'] ?? ''), 'System log', 500),
+                ':notes' => InputRules::note((string)($report['notes'] ?? ''), 'Remarks', 500),
                 ':false_positive' => !empty($report['falsePositive']) ? 1 : 0,
                 ':snapshot_url' => !empty($report['snapshotUrl']) ? (string)$report['snapshotUrl'] : null,
                 ':created_at_iso' => $createdAt,
@@ -516,24 +533,28 @@ final class DeskStore {
             if (!is_array($officer) || empty($officer['id'])) {
                 continue;
             }
-            $id = strtoupper(trim((string)$officer['id']));
-            $fullName = trim((string)($officer['fullName'] ?? $officer['name'] ?? $id));
+            $id = InputRules::badge((string)$officer['id']);
+            $fullName = InputRules::personName((string)($officer['fullName'] ?? $officer['name'] ?? ''), 'Officer name');
             $skills = isset($officer['skills']) && is_array($officer['skills']) && $officer['skills']
                 ? array_values($officer['skills'])
                 : ['Traffic control'];
+            $cleanSkills = [];
+            foreach (array_slice($skills, 0, 8) as $skill) {
+                $cleanSkills[] = InputRules::shortText((string)$skill, 'Skill', 40, true);
+            }
             $stmt->execute([
                 ':id' => $id,
-                ':name' => (string)($officer['name'] ?? $fullName),
+                ':name' => InputRules::shortText((string)($officer['name'] ?? $fullName), 'Officer name', 60, true),
                 ':full_name' => $fullName,
-                ':rank_title' => (string)($officer['rank'] ?? 'Traffic Enforcer'),
-                ':contact' => (string)($officer['contact'] ?? '--'),
-                ':radio' => (string)($officer['radio'] ?? $id),
-                ':zone' => (string)($officer['zone'] ?? 'Villamonte'),
+                ':rank_title' => InputRules::shortText((string)($officer['rank'] ?? 'Traffic Enforcer'), 'Rank', 40, true),
+                ':contact' => InputRules::contact((string)($officer['contact'] ?? '--')),
+                ':radio' => InputRules::shortText((string)($officer['radio'] ?? $id), 'Radio', 40, true),
+                ':zone' => InputRules::shortText((string)($officer['zone'] ?? 'Villamonte'), 'Zone', 40, true),
                 ':shift_start' => (string)($officer['shiftStart'] ?? '06:00'),
                 ':shift_end' => (string)($officer['shiftEnd'] ?? '14:00'),
                 ':rest_day' => (string)($officer['restDay'] ?? 'Sunday'),
                 ':status' => (string)($officer['status'] ?? 'Available'),
-                ':skills_json' => json_encode($skills, JSON_UNESCAPED_SLASHES) ?: '["Traffic control"]',
+                ':skills_json' => json_encode($cleanSkills, JSON_UNESCAPED_SLASHES) ?: '["Traffic control"]',
                 ':date_assigned' => (string)($officer['dateAssigned'] ?? date('Y-m-d'))
             ]);
         }
@@ -566,7 +587,7 @@ final class DeskStore {
                 ':enroute_at_iso' => !empty($assignment['enrouteAtIso']) ? (string)$assignment['enrouteAtIso'] : null,
                 ':onscene_at_iso' => !empty($assignment['onsceneAtIso']) ? (string)$assignment['onsceneAtIso'] : null,
                 ':resolved_at_iso' => !empty($assignment['resolvedAtIso']) ? (string)$assignment['resolvedAtIso'] : null,
-                ':field_notes' => (string)($assignment['fieldNotes'] ?? ''),
+                ':field_notes' => InputRules::note((string)($assignment['fieldNotes'] ?? ''), 'Field notes', 500),
                 ':created_by_user_id' => !empty($assignment['createdByUserId']) ? (string)$assignment['createdByUserId'] : null,
                 ':updated_by_user_id' => !empty($assignment['updatedByUserId']) ? (string)$assignment['updatedByUserId'] : null
             ]);

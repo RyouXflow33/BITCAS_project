@@ -1,6 +1,7 @@
 -- BITCAS MySQL schema (XAMPP local and Hostinger phpMyAdmin)
 -- Run this file inside your database in phpMyAdmin, or let Database::connect() create the tables.
 
+-- One row per camera: the newest live reading. Replaced about every 3 seconds.
 CREATE TABLE IF NOT EXISTS camera_live (
     camera_id VARCHAR(64) NOT NULL PRIMARY KEY,
     site_name VARCHAR(120) NOT NULL DEFAULT 'Villamonte Street Intersection',
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS camera_live (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One row per camera per minute. Kept 3 days. This is what Analytics calls a sample.
 CREATE TABLE IF NOT EXISTS traffic_minute (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     camera_id VARCHAR(64) NOT NULL,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS traffic_minute (
     KEY idx_recorded_at (recorded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One row per camera per hour, rolled up from the minute rows. Kept 90 days. Feeds the heatmap and the Logs page.
 CREATE TABLE IF NOT EXISTS traffic_hourly (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     camera_id VARCHAR(64) NOT NULL,
@@ -62,6 +65,7 @@ CREATE TABLE IF NOT EXISTS traffic_hourly (
     KEY idx_recorded_hour (recorded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One HEAVY photo. The JPEG file lives in assets/snapshots. Kept 30 days.
 CREATE TABLE IF NOT EXISTS snapshots (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     camera_id VARCHAR(64) NOT NULL,
@@ -74,6 +78,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     UNIQUE KEY uniq_snapshot_url (snapshot_url)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One desk login. password_hash is bcrypt. active = 0 means registered but not yet enabled.
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     full_name VARCHAR(120) NOT NULL,
@@ -86,6 +91,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at_iso VARCHAR(40) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One failed sign-in. Five from the same IP in 10 minutes blocks the next try.
 CREATE TABLE IF NOT EXISTS login_attempts (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     ip VARCHAR(45) NOT NULL,
@@ -94,6 +100,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     KEY idx_ip_time (ip, attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One congestion case. Opened by the server on a HEAVY photo, then updated by the desk.
 CREATE TABLE IF NOT EXISTS reports (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     location VARCHAR(160) NOT NULL,
@@ -118,6 +125,7 @@ CREATE TABLE IF NOT EXISTS reports (
     updated_by_user_id VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One traffic officer on the roster. This is not a login.
 CREATE TABLE IF NOT EXISTS officers (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     name VARCHAR(80) NOT NULL,
@@ -134,6 +142,7 @@ CREATE TABLE IF NOT EXISTS officers (
     date_assigned VARCHAR(20) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One dispatch. The time columns are the log: assigned, acknowledged, en route, on scene, resolved.
 CREATE TABLE IF NOT EXISTS assignments (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     report_id VARCHAR(32) NOT NULL,
@@ -149,6 +158,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     updated_by_user_id VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- One driver advisory after it was sent.
 CREATE TABLE IF NOT EXISTS advisories (
     id VARCHAR(40) NOT NULL PRIMARY KEY,
     level VARCHAR(24) NOT NULL,

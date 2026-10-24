@@ -16,6 +16,7 @@ function bootSession() {
     if (page === 'incidents') initReportsPage();
     if (page === 'dispatch') initDispatchPage();
     if (page === 'accounts') initAccountsPage();
+    if (page === 'logs') initLogsPage();
 
     refreshDeskState().then((updated) => {
         if (!updated) return;

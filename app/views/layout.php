@@ -18,13 +18,42 @@
         <p>LGU Traffic Dashboard</p>
 
         <label for="loginUsername">Username</label>
-        <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" name="bitcas-user" type="text" autocomplete="off" value="" required></div>
+        <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" name="bitcas-user" type="text" autocomplete="off" value="" required maxlength="32" pattern="[A-Za-z0-9._-]{3,32}"></div>
+        <small>3-32 characters: letters, numbers, dot, dash, or underscore.</small>
 
         <label for="loginPassword">Password</label>
-        <div class="field-wrap"><?= icon('badge') ?><input id="loginPassword" name="bitcas-pass" type="password" autocomplete="off" value="" required></div>
+        <div class="field-wrap"><?= icon('badge') ?><input id="loginPassword" name="bitcas-pass" type="password" autocomplete="off" value="" required minlength="8" maxlength="64"></div>
+        <small>8-64 characters.</small>
 
         <div id="loginError" class="login-error"></div>
         <button class="btn primary full" type="submit"><?= icon('login') ?> Login</button>
+        <button class="btn ghost full" id="showRegister" type="button">Need an account? Register</button>
+    </form>
+
+    <form class="login-card" id="registerForm" autocomplete="off" hidden>
+        <div class="login-mark"><?= icon('map') ?></div>
+        <h2>Register</h2>
+        <p>The account stays off until a super admin enables it.</p>
+
+        <label for="regFullName">Full name</label>
+        <input id="regFullName" type="text" required maxlength="60" autocomplete="name" placeholder="Maria Santos">
+        <small>1-60 characters: letters, spaces, apostrophe, dot, or dash. No numbers.</small>
+
+        <label for="regUsername">Username</label>
+        <input id="regUsername" type="text" required maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" autocomplete="off" placeholder="msantos">
+        <small>3-32 characters: letters, numbers, dot, dash, or underscore.</small>
+
+        <label for="regPassword">Password</label>
+        <input id="regPassword" type="password" required minlength="8" maxlength="64" autocomplete="new-password">
+        <small>8-64 characters.</small>
+
+        <label for="regPassword2">Confirm password</label>
+        <input id="regPassword2" type="password" required minlength="8" maxlength="64" autocomplete="new-password">
+
+        <div id="registerError" class="login-error"></div>
+        <div id="registerOk" class="login-ok" hidden></div>
+        <button class="btn primary full" type="submit"><?= icon('user-plus') ?> Register</button>
+        <button class="btn ghost full" id="showLogin" type="button">Already have an account? Login</button>
     </form>
 </div>
 
@@ -65,13 +94,13 @@
 // Every local script carries its file time, so a browser or Hostinger cache can never serve an old copy
 // after an upload. Load order matters: core, models, views, controllers, then the bootstrap.
 $appScripts = [
-    'core/constants.js', 'core/helpers.js',
+    'core/constants.js', 'core/helpers.js', 'core/inputRules.js',
     'models/store.js', 'models/analyticsModel.js',
     'views/authView.js', 'views/commandView.js', 'views/analyticsView.js',
-    'views/reportsView.js', 'views/dispatchView.js', 'views/accountsView.js',
+    'views/reportsView.js', 'views/dispatchView.js', 'views/accountsView.js', 'views/logsView.js',
     'controllers/authController.js', 'controllers/commandController.js',
     'controllers/analyticsController.js', 'controllers/reportsController.js',
-    'controllers/dispatchController.js', 'controllers/accountsController.js',
+    'controllers/dispatchController.js', 'controllers/accountsController.js', 'controllers/logsController.js',
     'app.js'
 ];
 $scriptRoot = dirname(__DIR__, 2) . '/assets/js/mvc/';

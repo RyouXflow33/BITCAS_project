@@ -13,6 +13,7 @@
         <a class="<?= navClass($page,'incidents') ?>" href="?page=incidents"><?= icon('reports') ?> Reports <b class="nav-badge" id="reportNavCount">0</b></a>
         <a class="<?= navClass($page,'dispatch') ?>" href="?page=dispatch"><?= icon('dispatch') ?> Dispatch</a>
         <a class="<?= navClass($page,'analytics') ?>" href="?page=analytics"><?= icon('analytics') ?> Analytics</a>
+        <a class="<?= navClass($page,'logs') ?>" href="?page=logs"><?= icon('clock') ?> Logs</a>
     </nav>
 
     <div class="sidebar-footer">

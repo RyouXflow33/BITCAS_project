@@ -19,7 +19,8 @@ final class PageController {
             'analytics' => 'Traffic Analytics',
             'incidents' => 'Congestion Reports',
             'dispatch' => 'Dispatch',
-            'accounts' => 'Desk accounts'
+            'accounts' => 'Desk accounts',
+            'logs' => 'Logs'
         ];
         $page = array_key_exists($requested, $titles) ? $requested : 'command';
         $pageTitle = $titles[$page];

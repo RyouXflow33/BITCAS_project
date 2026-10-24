@@ -5,6 +5,7 @@ require_once __DIR__ . '/Database.php';
 
 // Session, password, and sign-in limits for the LGU desk.
 // Passwords are checked here on the server. The browser never receives a stored hash.
+// A registered account with active = 0 is refused here until a super admin enables it.
 final class Auth {
     // The first version of this project hashed in the browser with this prefix.
     // It is only used to accept an old hash once and replace it with bcrypt.

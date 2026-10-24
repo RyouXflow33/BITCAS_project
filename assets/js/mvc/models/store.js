@@ -267,6 +267,28 @@ function userLabel(userId) {
     return user ? user.fullName : userId;
 }
 
+async function registerAccount(fullName, username, password) {
+    try {
+        const response = await fetch(AUTH_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'register',
+                fullName: String(fullName || '').trim(),
+                username: String(username || '').trim().toLowerCase(),
+                password: String(password || '')
+            })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.ok) {
+            return { error: body.error || 'Could not register.' };
+        }
+        return { message: body.message, user: body.user };
+    } catch (error) {
+        return { error: 'Could not reach the server to register.' };
+    }
+}
+
 async function authenticateUser(username, password) {
     const name = String(username || '').trim().toLowerCase();
     try {
@@ -306,11 +328,10 @@ function createDeskUser(fields) {
     const fullName = String(fields.fullName || '').trim();
     const username = String(fields.username || '').trim().toLowerCase();
     const password = String(fields.password || '');
-    if (!fullName) return { error: 'Full name is required.' };
-    if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
-        return { error: 'Username must be 3–32 characters: letters, numbers, dot, dash, or underscore.' };
-    }
-    if (password.length < 8) return { error: 'Temporary password must be at least 8 characters.' };
+    const problem = personNameError(fullName, 'Full name')
+        || usernameError(username)
+        || passwordError(password, 'Temporary password');
+    if (problem) return { error: problem };
     if (state.users.some((user) => user.username === username)) {
         return { error: 'That username is already in use.' };
     }
@@ -683,6 +704,8 @@ function findReport(reportId) {
 function updateCameraReportNotes(reportId, notes) {
     const report = findReport(reportId);
     if (!report || !isCameraReport(report)) return null;
+    const problem = noteError(notes, 'Remarks', 500);
+    if (problem) return { error: problem };
     report.notes = notes;
     report.updatedAtIso = new Date().toISOString();
     report.updatedByUserId = currentActor().userId;
@@ -693,6 +716,11 @@ function updateCameraReportNotes(reportId, notes) {
 function updateReport(reportId, fields) {
     const report = findReport(reportId);
     if (!report) return null;
+    const problem = shortTextError(fields.location, 'Location', 160, true)
+        || wholeNumberError(fields.vehicleCount, 'Vehicle count', 0, 500)
+        || noteError(fields.notes, 'Remarks', 500)
+        || noteError(fields.context, 'System log', 500);
+    if (problem) return { error: problem };
 
     report.location = fields.location;
     report.vehicleCount = Number(fields.vehicleCount);
@@ -861,7 +889,13 @@ function nextOfficerId() {
 // Field roster only. A badge is not a desk login; the super admin creates those on Desk accounts.
 function createOfficer(fields) {
     const fullName = String(fields.fullName || '').trim();
-    if (!fullName) return { error: 'Full name is required.' };
+    const nameProblem = personNameError(fullName, 'Full name')
+        || badgeError(fields.id)
+        || contactError(fields.contact)
+        || shortTextError(fields.radio, 'Radio', 40, false)
+        || shortTextError(fields.zone, 'Zone', 40, false)
+        || shortTextError(fields.skills, 'Skills', 200, false);
+    if (nameProblem) return { error: nameProblem };
 
     let id = String(fields.id || '').trim().toUpperCase().replace(/\s+/g, '');
     if (!id) id = nextOfficerId();
@@ -875,6 +909,8 @@ function createOfficer(fields) {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+    const skillProblem = skills.map((skill) => shortTextError(skill, 'Skill', 40, true)).find(Boolean);
+    if (skillProblem) return { error: skillProblem };
 
     const officer = normalizeOfficer({
         id,

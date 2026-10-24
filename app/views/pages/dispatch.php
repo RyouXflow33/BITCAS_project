@@ -44,11 +44,12 @@
                 <form class="form-grid officer-create-form" id="officerCreateForm">
                     <div>
                         <label for="officerBadge">Badge ID</label>
-                        <input id="officerBadge" type="text" placeholder="BTAO-01 (auto if blank)" autocomplete="off">
+                        <input id="officerBadge" type="text" maxlength="20" placeholder="BTAO-01 (auto if blank)" autocomplete="off">
                     </div>
                     <div>
                         <label for="officerFullName">Full name</label>
-                        <input id="officerFullName" type="text" required placeholder="Juan Ramos" autocomplete="name">
+                        <input id="officerFullName" type="text" required maxlength="60" placeholder="Juan Ramos" autocomplete="name">
+                        <small>1-60 letters. No numbers.</small>
                     </div>
                     <div>
                         <label for="officerRank">Rank</label>
@@ -60,15 +61,16 @@
                     </div>
                     <div>
                         <label for="officerContact">Contact</label>
-                        <input id="officerContact" type="text" placeholder="09xx-xxx-xxxx" autocomplete="tel">
+                        <input id="officerContact" type="text" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" placeholder="09171234567" autocomplete="tel">
+                        <small>11 digits starting with 09.</small>
                     </div>
                     <div>
                         <label for="officerRadio">Radio callsign</label>
-                        <input id="officerRadio" type="text" placeholder="Victor-01">
+                        <input id="officerRadio" type="text" maxlength="40" placeholder="Victor-01">
                     </div>
                     <div>
                         <label for="officerZone">Zone / beat</label>
-                        <input id="officerZone" type="text" value="Villamonte">
+                        <input id="officerZone" type="text" maxlength="40" value="Villamonte">
                     </div>
                     <div>
                         <label for="officerShiftStart">Shift start</label>
@@ -92,7 +94,7 @@
                     </div>
                     <div>
                         <label for="officerSkills">Skills</label>
-                        <input id="officerSkills" type="text" placeholder="Traffic control, First aid">
+                        <input id="officerSkills" type="text" maxlength="200" placeholder="Traffic control, First aid">
                     </div>
                     <p class="form-error" id="officerCreateError" hidden></p>
                     <div class="full-width">

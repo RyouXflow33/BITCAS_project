@@ -67,11 +67,13 @@
             </div>
             <div>
                 <label for="advisoryArea">Affected area</label>
-                <input id="advisoryArea" type="text" value="Villamonte Street Intersection" required>
+                <input id="advisoryArea" type="text" maxlength="80" value="Villamonte Street Intersection" required>
+                <small>Up to 80 characters.</small>
             </div>
             <div class="full-width">
                 <label for="advisoryMessage">Message</label>
-                <textarea id="advisoryMessage" rows="3" placeholder="Traffic advisory message" required></textarea>
+                <textarea id="advisoryMessage" rows="3" maxlength="280" placeholder="Traffic advisory message" required></textarea>
+                <small>Up to 280 characters.</small>
             </div>
             <button class="btn primary" type="submit"><?= icon('send') ?> Broadcast advisory</button>
         </form>

@@ -36,6 +36,9 @@ try {
 
     http_response_code(405);
     echo json_encode(['ok' => false, 'error' => 'Use GET or POST']);
+} catch (InvalidArgumentException $error) {
+    http_response_code(422);
+    echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
 } catch (Throwable $error) {
     error_log('desk_state: ' . $error->getMessage());
     http_response_code(500);

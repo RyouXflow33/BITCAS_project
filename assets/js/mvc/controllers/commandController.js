@@ -69,7 +69,11 @@ function bindCommandActions() {
             const level = getValue('advisoryLevel');
             const area = getValue('advisoryArea');
             const message = getValue('advisoryMessage');
-            if (!level || !area || !message) return;
+            const problem = shortTextError(area, 'Area', 80, true) || noteError(message, 'Message', 280) || (!message.trim() ? 'Message is required.' : '');
+            if (!level || problem) {
+                setText('advisoryStatus', problem || 'Choose a congestion level.');
+                return;
+            }
 
             const button = advisoryForm.querySelector('button[type="submit"]');
             if (button) button.disabled = true;
