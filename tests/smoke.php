@@ -93,13 +93,9 @@ check('after the forged sync there is still no session', is_array($r['json']) &&
 $r = request('POST', "$base/api/auth.php", ['action' => 'login', 'username' => 'nobody', 'passwordHash' => str_repeat('a', 64)], false);
 check('a bare hash cannot log in (401 or 429)', in_array($r['status'], [401, 429], true), 'status ' . $r['status']);
 
-echo "\nRegistration limits\n";
-$r = request('POST', "$base/api/auth.php", ['action' => 'register', 'fullName' => 'Juan1', 'username' => 'juanreg', 'password' => 'Temp-pass-123'], false);
-check('a name with a number is refused (422)', $r['status'] === 422, 'status ' . $r['status']);
-$r = request('POST', "$base/api/auth.php", ['action' => 'register', 'fullName' => str_repeat('A', 61), 'username' => 'juanreg', 'password' => 'Temp-pass-123'], false);
-check('a name over 60 characters is refused (422)', $r['status'] === 422, 'status ' . $r['status']);
-$r = request('POST', "$base/api/auth.php", ['action' => 'register', 'fullName' => 'Juan Reg', 'username' => 'juanreg', 'password' => 'short'], false);
-check('a short password is refused (422)', $r['status'] === 422, 'status ' . $r['status']);
+echo "\nAccounts are created by a super admin, not by the public\n";
+$r = request('POST', "$base/api/auth.php", ['action' => 'register', 'fullName' => 'Juan Reg', 'username' => 'juanreg', 'password' => 'Temp-pass-123'], false);
+check('public register action does not exist (400)', $r['status'] === 400, 'status ' . $r['status']);
 
 echo "\nIngest key\n";
 $r = request('POST', "$base/api/save_data.php", ['camera_id' => 'SMOKE'], false);
@@ -164,21 +160,8 @@ if ($user !== '' && $password !== '') {
         $jar = $first;
         @unlink($tempJar);
 
-        $regName = 'smoke' . substr(bin2hex(random_bytes(3)), 0, 6);
-        $r = request('POST', "$base/api/auth.php", ['action' => 'register', 'fullName' => 'Smoke Register', 'username' => $regName, 'password' => 'Temp-pass-123'], true);
-        $registeredId = $r['json']['user']['id'] ?? '';
-        check('public register creates an inactive account', $r['status'] === 200 && $registeredId !== '' && ($r['json']['user']['active'] ?? true) === false, 'status ' . $r['status']);
-        $regJar = tempnam(sys_get_temp_dir(), 'bitcas_smoke3_');
-        $adminJar = $jar;
-        $jar = $regJar;
-        $r = request('POST', "$base/api/auth.php", ['action' => 'login', 'username' => $regName, 'password' => 'Temp-pass-123'], true);
-        check('inactive account cannot sign in (403)', $r['status'] === 403, 'status ' . $r['status']);
-        $jar = $adminJar;
-        @unlink($regJar);
-        $r = request('POST', "$base/api/desk_users.php", ['action' => 'set_active', 'userId' => $registeredId, 'active' => true], true);
-        check('super admin can enable the registered account', $r['status'] === 200 && !empty($r['json']['user']['active']), 'status ' . $r['status']);
-        $r = request('POST', "$base/api/desk_users.php", ['action' => 'delete', 'userId' => $registeredId], true);
-        check('super admin can delete the registered account', $r['status'] === 200, 'status ' . $r['status']);
+        $r = request('POST', "$base/api/desk_users.php", ['action' => 'create', 'fullName' => 'Juan1', 'username' => 'juanbad', 'password' => 'Temp-pass-123'], true);
+        check('a name with a number is refused (422)', $r['status'] === 422, 'status ' . $r['status']);
 
         $r = request('POST', "$base/api/desk_users.php", ['action' => 'delete', 'userId' => $created], true);
         check('super admin can delete the test account', $r['status'] === 200, 'status ' . $r['status']);

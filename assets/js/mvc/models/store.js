@@ -267,28 +267,6 @@ function userLabel(userId) {
     return user ? user.fullName : userId;
 }
 
-async function registerAccount(fullName, username, password) {
-    try {
-        const response = await fetch(AUTH_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'register',
-                fullName: String(fullName || '').trim(),
-                username: String(username || '').trim().toLowerCase(),
-                password: String(password || '')
-            })
-        });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || !body.ok) {
-            return { error: body.error || 'Could not register.' };
-        }
-        return { message: body.message, user: body.user };
-    } catch (error) {
-        return { error: 'Could not reach the server to register.' };
-    }
-}
-
 async function authenticateUser(username, password) {
     const name = String(username || '').trim().toLowerCase();
     try {

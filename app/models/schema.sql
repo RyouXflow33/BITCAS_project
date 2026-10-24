@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     UNIQUE KEY uniq_snapshot_url (snapshot_url)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- One desk login. password_hash is bcrypt. active = 0 means registered but not yet enabled.
+-- One desk login. password_hash is bcrypt. The super admin creates these; active = 0 means they turned it off.
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     full_name VARCHAR(120) NOT NULL,

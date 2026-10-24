@@ -58,7 +58,7 @@ function renderDataScope(capability) {
 
     scope.dataset.state = missing.length ? 'partial' : 'ok';
     scope.innerHTML = `
-        <strong>${capability.sampleCount} samples over ${capability.spanLabel}</strong>
+        <strong>${capability.sampleCount} minute readings over ${capability.spanLabel}</strong>
         <span>${missing.length
             ? `Unavailable in this dataset: ${missing.join(', ')}. Run vision/calibrate.py to enable them.`
             : 'Counting line and speed calibration both active.'}</span>
@@ -120,12 +120,12 @@ function renderTrafficChart(hourly, capability) {
     setText('hourlyAxisNote', capability.hasThroughput ? 'vehicles counted / hour' : 'avg vehicles in frame (occupancy index)');
     setText('analyticsDataSource', capability.hasThroughput
         ? 'Counted crossings'
-        : 'Occupancy samples - not a vehicle count');
+        : 'Vehicles in frame - not a count of vehicles that crossed');
 
     // Show every hour present, not a trailing slice -- otherwise the chart
     // silently hides the peak hour reported in the KPI above it.
     if (!hourly.length) {
-        target.innerHTML = '<div class="chart-empty">No samples yet.</div>';
+        target.innerHTML = '<div class="chart-empty">No minute readings yet.</div>';
         return;
     }
 
@@ -138,7 +138,7 @@ function renderTrafficChart(hourly, capability) {
             ${hourly.map((entry) => {
                 const height = Math.max(8, Math.round((entry.value / maxValue) * 100));
                 const label = String(entry.hour).padStart(2, '0');
-                return `<div class="bar-wrap" title="${label}:00 - ${entry.value} (${entry.samples} samples)">${showValues ? `<span class="bar-value">${entry.value}</span>` : ''}<div class="bar" style="height:${height}%"></div><small>${label}</small></div>`;
+                return `<div class="bar-wrap" title="${label}:00 - ${entry.value} (${entry.samples} minute reading${entry.samples === 1 ? '' : 's'})">${showValues ? `<span class="bar-value">${entry.value}</span>` : ''}<div class="bar" style="height:${height}%"></div><small>${label}</small></div>`;
             }).join('')}
         </div>
     `;
@@ -156,7 +156,7 @@ function renderSevenDayChart(days, capability) {
 
     setText('sevenDayNote', capability.hasDayHistory
         ? `Based on ${capability.spanLabel} of collected history.`
-        : `Only ${capability.spanLabel} of history collected so far - days without bars have no samples yet.`);
+        : `Only ${capability.spanLabel} of history collected so far - days without bars have no minute readings yet.`);
 }
 
 function renderVehicleMix(mix) {
@@ -261,7 +261,7 @@ function renderForecastPanel(forecast) {
                 <span>+${horizon.minutes} min &middot; ${horizon.label}</span>
                 <strong>${horizon.score}%</strong>
                 <b>${horizon.level}</b>
-                <em title="${horizon.basis}">${horizon.confidence} confidence &middot; ${horizon.samples} prior wk</em>
+                <em title="${horizon.basis}">${horizon.confidence} confidence &middot; ${horizon.samples} prior week${horizon.samples === 1 ? '' : 's'}</em>
             </div>
         `;
     }).join('');
@@ -317,7 +317,7 @@ function renderHeatCell(cell, dayLabel, maxValue, isVolume) {
     const style = isVolume
         ? `background:rgba(231,76,60,${(0.12 + intensity * 0.88).toFixed(2)})`
         : `background:${visionLevelColor(scoreToVisionLevel(cell.value))}`;
-    return `<span class="heat-cell" style="${style}" title="${time} - ${label} (${cell.samples} sample${cell.samples === 1 ? '' : 's'})"></span>`;
+    return `<span class="heat-cell" style="${style}" title="${time} - ${label} (${cell.samples} hourly reading${cell.samples === 1 ? '' : 's'})"></span>`;
 }
 
 function renderHeatmapLegend(heatmap, hasData) {
@@ -414,7 +414,7 @@ function exportAnalyticsPdf() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     const unavailable = 'not available (needs calibration)';
-    doc.text(`Data window: ${capability.sampleCount} samples over ${capability.spanLabel}`, 18, 64);
+    doc.text(`Data window: ${capability.sampleCount} minute readings over ${capability.spanLabel}`, 18, 64);
     doc.text(`Vehicles counted today: ${metrics.throughputToday !== null ? metrics.throughputToday : unavailable}`, 18, 70);
     doc.text(`Traffic flow: ${metrics.flowPerMinute !== null ? `${metrics.flowPerMinute.toFixed(1)} veh/min` : unavailable}`, 18, 76);
     doc.text(`Average speed: ${metrics.avgSpeedKph !== null ? `${metrics.avgSpeedKph.toFixed(1)} km/h` : unavailable}`, 18, 82);

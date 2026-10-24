@@ -216,7 +216,7 @@ function computeHourlyProfile(telemetry, capability) {
 }
 
 function computePeakHour(hourly) {
-    if (!hourly.length) return { label: '--', basis: 'No samples yet' };
+    if (!hourly.length) return { label: '--', basis: 'No minute readings yet' };
     const peak = hourly.reduce((best, bucket) => (bucket.value > best.value ? bucket : best), hourly[0]);
     return {
         label: `${String(peak.hour).padStart(2, '0')}:00`,
@@ -243,7 +243,7 @@ function computeWeekTrend(telemetry) {
     const todayKey = formatLocalDateKey(now);
     const hour = now.getHours();
     const today = telemetry.filter((point) => formatLocalDateKey(new Date(point.timestampIso)) === todayKey && new Date(point.timestampIso).getHours() === hour);
-    if (!today.length) return { percent: null, note: 'No samples for this hour today', comparison: 'Unavailable' };
+    if (!today.length) return { percent: null, note: 'No minute readings for this hour today', comparison: 'Unavailable' };
 
     const oldest = new Date(telemetry[0].timestampIso);
     const hasWeekOfHistory = now.getTime() - oldest.getTime() >= 7 * 24 * 60 * 60 * 1000;
@@ -253,7 +253,7 @@ function computeWeekTrend(telemetry) {
         if (formatLocalDateKey(pointDate) === todayKey) return false;
         return hasWeekOfHistory ? pointDate >= cutoff && pointDate.getHours() === hour : true;
     });
-    if (!comparison.length) return { percent: null, note: hasWeekOfHistory ? 'No prior samples for this hour' : 'Not enough history to compare', comparison: 'Unavailable' };
+    if (!comparison.length) return { percent: null, note: hasWeekOfHistory ? 'No prior readings for this hour' : 'Not enough history to compare', comparison: 'Unavailable' };
 
     const todayAverage = average(today.map((point) => point.vehicleCount));
     const comparisonAverage = average(comparison.map((point) => point.vehicleCount));
@@ -396,7 +396,7 @@ function detectAnomalies(telemetry, hourly) {
     const now = new Date();
     const recent = computeRecentWindow(telemetry, 10);
     if (!recent) {
-        return { status: 'no-data', reason: 'No vision samples in the last 10 minutes.', items: [] };
+        return { status: 'no-data', reason: 'No minute readings in the last 10 minutes.', items: [] };
     }
 
     const weekday = (now.getDay() + 6) % 7;
@@ -484,7 +484,7 @@ function detectAnomalies(telemetry, hourly) {
 function computeForecast(telemetry, hourly) {
     const recent = computeRecentWindow(telemetry, 30);
     if (!recent) {
-        return { status: 'no-data', reason: 'No vision samples in the last 30 minutes.', horizons: [] };
+        return { status: 'no-data', reason: 'No minute readings in the last 30 minutes.', horizons: [] };
     }
 
     const now = new Date();
@@ -526,7 +526,7 @@ function computeForecast(telemetry, hourly) {
     return {
         status: usable.length ? 'ok' : 'insufficient',
         reason: usable.length
-            ? `Blended from ${recent.samples} recent samples and the same slot in prior weeks.`
+            ? `Blended from ${recent.samples} recent minute readings and the same slot in prior weeks.`
             : 'Not enough weeks of history to forecast this slot yet.',
         horizons,
         currentScore: Math.round(recent.congestionScore)

@@ -36,9 +36,8 @@ Add `SMOKE_USER` and `SMOKE_PASSWORD` environment variables (a throwaway super a
 | A11 | Log in with only a hash | 401 (or 429 if throttled) |
 | A12 | `save_data.php` without the ingest key | 401 |
 | A13 | `upload_snapshot.php` without the ingest key | 401 |
-| A13b | Register with a number in the name, a 61-letter name, or a short password | 422, no account is created |
-| A13c | With sign-in: public register | account is created inactive |
-| A13d | That account tries to sign in | 403 until a super admin enables it |
+| A13b | Public `register` action | 400, the action does not exist. A super admin creates accounts. |
+| A13c | With sign-in: create an account whose name contains a number | 422 |
 | A14 | With `--blocked`: `/app/models/schema.sql`, `/app/models/Auth.php`, `/api/database.local.php`, `/api/onesignal.local.php`, `/vision/traffic_vision.py`, `/.git/HEAD` | each 403 or 404 (6 cases) |
 | A15 | With sign-in: wrong password | refused (401 or 429) |
 | A16 | Correct password | 200 and `ok` |
@@ -56,7 +55,7 @@ Add `SMOKE_USER` and `SMOKE_PASSWORD` environment variables (a throwaway super a
 | A28 | Super admin deletes their own account | 422 |
 | A29 | After logout, `desk_state` | 401 |
 
-Result on 23 Oct 2026 against the local server: 38 of 38 passed (public checks 16, including the registration limits, and the sign-in flow 22).
+Public sign-up is not available. A super admin creates every desk account from Desk accounts.
 
 `php tests/input_rules.php` checks the same name, username, password, whole-number, and phone rules without a web server. 10 of 10 passed.
 

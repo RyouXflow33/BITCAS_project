@@ -71,7 +71,7 @@ if ($action === 'login') {
         }
         if ((int)$row['active'] !== 1) {
             http_response_code(403);
-            echo json_encode(['ok' => false, 'error' => 'This account is not active yet. A super admin must enable it before you can sign in.']);
+            echo json_encode(['ok' => false, 'error' => 'This account is disabled. Ask the super admin.']);
             exit;
         }
 
@@ -91,39 +91,6 @@ if ($action === 'login') {
         echo json_encode(['ok' => false, 'error' => 'Database error during login.']);
         exit;
     }
-}
-
-// Anyone may register. The new account is inactive until a super admin enables it.
-if ($action === 'register') {
-    try {
-        $pdo = Database::connect();
-        if (!($pdo instanceof PDO)) {
-            throw new RuntimeException('Database unavailable');
-        }
-        if (Auth::isLockedOut($pdo)) {
-            http_response_code(429);
-            echo json_encode(['ok' => false, 'error' => 'Too many attempts. Wait 10 minutes and try again.']);
-            exit;
-        }
-        $user = DeskStore::registerUser(
-            (string)($payload['fullName'] ?? ''),
-            (string)($payload['username'] ?? ''),
-            (string)($payload['password'] ?? '')
-        );
-        echo json_encode([
-            'ok' => true,
-            'user' => $user,
-            'message' => 'Registered. A super admin must enable this account before you can sign in.'
-        ], JSON_UNESCAPED_SLASHES);
-    } catch (InvalidArgumentException $error) {
-        http_response_code(422);
-        echo json_encode(['ok' => false, 'error' => $error->getMessage()]);
-    } catch (Throwable $error) {
-        error_log('auth register: ' . $error->getMessage());
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => 'Could not register. Try again.']);
-    }
-    exit;
 }
 
 http_response_code(400);

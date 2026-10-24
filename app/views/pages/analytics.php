@@ -66,8 +66,8 @@
 </section>
 
 <div class="kpi-grid analytics-evidence">
-    <div><span>Rolling vehicle average</span><strong id="aRollingVehicleAverage">--</strong><small>Latest 10 vision samples</small></div>
-    <div><span>Historical baseline</span><strong id="aBaselineVehicleAverage">--</strong><small>All loaded vision samples</small></div>
+    <div><span>Rolling vehicle average</span><strong id="aRollingVehicleAverage">--</strong><small>Latest 10 minute readings</small></div>
+    <div><span>Historical baseline</span><strong id="aBaselineVehicleAverage">--</strong><small>All loaded minute readings</small></div>
     <div><span>Current vs baseline</span><strong id="aBaselineDelta">--</strong><small id="aBaselineNote">Waiting for live feed</small></div>
 </div>
 
@@ -128,7 +128,7 @@
         <div class="panel-head"><div><h2><?= icon('reports') ?> Report summary</h2><span>LGU response record</span></div></div>
         <div class="kpi-grid report-kpis">
             <div><span>Total reports</span><strong id="aTotalReports">0</strong><small>All time in this browser</small></div>
-            <div><span>Average congestion score</span><strong id="aAvgCongestion">0%</strong><small>Across loaded vision samples</small></div>
+            <div><span>Average congestion score</span><strong id="aAvgCongestion">0%</strong><small>Across loaded minute readings</small></div>
             <div><span>Resolved rate</span><strong id="aResolvedRate">0%</strong><small>Reports marked resolved</small></div>
             <div><span>Class distribution</span><strong id="aClassSummary">--</strong><small>Low / Moderate / High</small></div>
         </div>

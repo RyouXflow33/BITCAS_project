@@ -210,13 +210,9 @@ final class DeskStore {
     // --- desk accounts: one action at a time, checked on the server ---
     // Each method throws InvalidArgumentException with a message the desk can show.
 
+    // Only a signed-in super admin reaches this, through api/desk_users.php.
     public static function createUser(string $fullName, string $username, string $password, ?string $createdBy): array {
         return self::insertUser($fullName, $username, $password, $createdBy, true, true);
-    }
-
-    // Public registration. The account cannot sign in until a super admin enables it.
-    public static function registerUser(string $fullName, string $username, string $password): array {
-        return self::insertUser($fullName, $username, $password, null, false, false);
     }
 
     private static function insertUser(

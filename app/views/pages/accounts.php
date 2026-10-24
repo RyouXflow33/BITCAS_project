@@ -32,7 +32,7 @@
     </section>
 
     <section class="panel" id="personnelPanel" hidden>
-        <div class="panel-head"><div><h2><?= icon('user-plus') ?> Add desk personnel</h2><span>Super admin only. This is not a public registration form.</span></div></div>
+        <div class="panel-head"><div><h2><?= icon('user-plus') ?> Add desk personnel</h2><span>Super admin only. This is how a desk login is created.</span></div></div>
         <form class="form-grid" id="addDeskUserForm">
             <div>
                 <label for="deskFullName">Full name</label>

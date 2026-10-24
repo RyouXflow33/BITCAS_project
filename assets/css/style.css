@@ -100,11 +100,6 @@ button {
     font-size: 12px;
 }
 
-.login-ok {
-    color: var(--green, #1e7a46);
-    font-size: 12px;
-}
-
 .log-list {
     display: grid;
     gap: 8px;
