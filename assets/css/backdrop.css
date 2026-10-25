@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Backdrop: blurred satellite map behind Reports, Dispatch and Analytics.
+   The panels there use the same see-through glass as the Traffic Map.
+   ========================================================================== */
+
+.page-backdrop {
+    position: fixed;
+    inset: -30px;              /* bleed past the viewport so the blur has no soft edge */
+    z-index: 0;
+    pointer-events: none;
+    background: #0b0c0f;
+    filter: blur(6px) saturate(.9) brightness(.55);
+}
+
+:root[data-theme="light"] .page-backdrop {
+    filter: blur(6px) saturate(.95) brightness(1.05);
+}
+
+.page-backdrop .leaflet-container {
+    background: transparent;
+}
+
+/* soft veil + vignette between the map and the panels */
+.has-backdrop::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at 50% 40%, transparent 45%, rgba(0, 0, 0, .5) 100%),
+        linear-gradient(rgba(8, 9, 11, .22), rgba(8, 9, 11, .22));
+}
+
+:root[data-theme="light"] .has-backdrop::before {
+    background:
+        radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(15, 23, 42, .18) 100%),
+        linear-gradient(rgba(255, 255, 255, .32), rgba(255, 255, 255, .32));
+}
+
+.has-backdrop .app-shell {
+    position: relative;
+    z-index: 1;
+}
+
+.backdrop-credit {
+    position: fixed;
+    z-index: 2;
+    right: 10px;
+    bottom: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .35);
+    color: rgba(255, 255, 255, .7);
+    font-size: 10px;
+    pointer-events: none;
+}
+
+/* ---- same see-through glass as the Traffic Map ------------------------------ */
+.has-backdrop {
+    --glass-bg: rgba(255, 255, 255, .46);
+    --glass-line: rgba(15, 23, 42, .10);
+    --glass-blur: blur(22px) saturate(1.35);
+    --surface: rgba(255, 255, 255, .55);
+    --surface-2: rgba(255, 255, 255, .38);
+    --topbar-bg: rgba(255, 255, 255, .45);
+}
+
+:root[data-theme="dark"] .has-backdrop {
+    --glass-bg: rgba(18, 20, 24, .38);
+    --glass-line: rgba(255, 255, 255, .10);
+    --surface: rgba(24, 26, 31, .46);
+    --surface-2: rgba(255, 255, 255, .05);
+    --topbar-bg: rgba(8, 9, 11, .38);
+    --muted: #d5d8de;
+    --chart-text: #d5d8de;
+}
+
+.has-backdrop .topbar {
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(16px) saturate(1.2);
+    border-bottom-color: var(--glass-line);
+}
+
+.has-backdrop input,
+.has-backdrop select,
+.has-backdrop textarea {
+    background: rgba(255, 255, 255, .55);
+}
+
+:root[data-theme="dark"] .has-backdrop input,
+:root[data-theme="dark"] .has-backdrop select,
+:root[data-theme="dark"] .has-backdrop textarea {
+    background: rgba(255, 255, 255, .06);
+}
+
+.has-backdrop .chip,
+.has-backdrop .btn.ghost {
+    background: rgba(255, 255, 255, .45);
+}
+
+:root[data-theme="dark"] .has-backdrop .chip,
+:root[data-theme="dark"] .has-backdrop .btn.ghost {
+    background: rgba(255, 255, 255, .08);
+}
+
+.has-backdrop .chip.active {
+    background: #0f172a;
+    color: #fff;
+}
+
+:root[data-theme="dark"] .has-backdrop .chip.active {
+    background: rgba(255, 255, 255, .2);
+}
+
+/* the page text sits on imagery: keep it crisp */
+:root[data-theme="dark"] .has-backdrop .page-heading,
+:root[data-theme="dark"] .has-backdrop .greeting {
+    text-shadow: 0 2px 18px rgba(0, 0, 0, .45);
+}
+
+/* light theme: keep the small labels readable on top of imagery */
+:root[data-theme="light"] .has-backdrop .section-kicker,
+:root[data-theme="light"] .has-backdrop .breadcrumb,
+:root[data-theme="light"] .has-backdrop .dash-head p,
+:root[data-theme="light"] .has-backdrop .top-tab,
+:root[data-theme="light"] .has-backdrop .panel-head span,
+:root[data-theme="light"] .has-backdrop .data-scope,
+:root[data-theme="light"] .has-backdrop .studio-summary small {
+    color: #1e293b;
+}
+
+:root[data-theme="light"] .has-backdrop .top-tab.active {
+    color: #0f172a;
+}

@@ -1,0 +1,261 @@
+/* ==========================================================================
+   Motion - loading circle + page fade-in / fade-out
+   ========================================================================== */
+
+:root {
+    --fade-in: .45s;
+    --fade-out: .26s;
+}
+
+/* ---- Loading overlay -------------------------------------------------- */
+.page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .35s ease, visibility 0s linear .35s;
+}
+
+.page-loader.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity .2s ease, visibility 0s;
+}
+
+.loader-box {
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+}
+
+.loader-ring {
+    position: relative;
+    width: 68px;
+    height: 68px;
+    display: grid;
+    place-items: center;
+}
+
+.loader-ring span {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid var(--line);
+    border-top-color: var(--orange);
+    animation: loader-spin .85s cubic-bezier(.55, .15, .45, .85) infinite;
+}
+
+.loader-ring b {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: var(--orange);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    animation: loader-breathe 1.6s ease-in-out infinite;
+}
+
+.loader-ring b .ico {
+    width: 20px;
+    height: 20px;
+}
+
+.loader-text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .24em;
+    color: var(--muted);
+    text-indent: .24em;
+}
+
+@keyframes loader-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes loader-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(.9); }
+}
+
+/* ---- Page fade in / out ------------------------------------------------ */
+body:not(.page-ready) .main,
+body:not(.page-ready) .sidebar {
+    opacity: 0;
+}
+
+body.page-ready .main {
+    animation: page-fade-in var(--fade-in) ease both;
+}
+
+body.page-ready .sidebar {
+    animation: sidebar-fade-in .5s ease both;
+}
+
+.main,
+.sidebar {
+    transition: opacity var(--fade-out) ease, transform var(--fade-out) ease;
+}
+
+body.is-leaving .main {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
+body.is-leaving .sidebar .nav,
+body.is-leaving .sidebar .sidebar-footer {
+    opacity: .6;
+}
+
+@keyframes page-fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sidebar-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Login card fades in too */
+.auth-overlay:not([hidden]) .login-card {
+    animation: page-fade-in .5s ease both;
+}
+
+/* Smooth color change when the theme is switched */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+    transition: background-color .3s ease, border-color .3s ease, color .3s ease, box-shadow .3s ease !important;
+}
+
+/* ---- Animations turned off in Settings / reduced-motion --------------- */
+html[data-motion="off"] .page-loader,
+html[data-motion="off"] .loader-ring span,
+html[data-motion="off"] .loader-ring b {
+    transition: none !important;
+}
+
+html[data-motion="off"] body:not(.page-ready) .main,
+html[data-motion="off"] body:not(.page-ready) .sidebar {
+    opacity: 1;
+}
+
+html[data-motion="off"] body.page-ready .main,
+html[data-motion="off"] body.page-ready .sidebar,
+html[data-motion="off"] .content > *,
+html[data-motion="off"] .brand-mark,
+html[data-motion="off"] .auth-overlay .login-card {
+    animation: none !important;
+}
+
+html[data-motion="off"] body.is-leaving .main {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body:not(.page-ready) .main,
+    body:not(.page-ready) .sidebar { opacity: 1; }
+    .loader-ring span { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
+}
+
+/* ==========================================================================
+   Broadcast advisory transition
+   ========================================================================== */
+
+.broadcast-btn {
+    position: relative;
+    transition: background .25s ease, transform .15s ease, box-shadow .25s ease;
+}
+
+.broadcast-btn .btn-spinner,
+.broadcast-btn > .ico:nth-of-type(2) {
+    display: none;
+}
+
+.broadcast-btn.is-sending {
+    pointer-events: none;
+    opacity: .92;
+}
+
+.broadcast-btn.is-sending > .ico:first-child {
+    display: none;
+}
+
+.broadcast-btn.is-sending .btn-spinner {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .45);
+    border-top-color: #fff;
+    animation: loader-spin .7s linear infinite;
+}
+
+.broadcast-btn.is-sent {
+    background: #059669;
+    border-color: #059669;
+    animation: sent-pop .45s ease;
+}
+
+.broadcast-btn.is-sent > .ico:first-child {
+    display: none;
+}
+
+.broadcast-btn.is-sent > .ico:nth-of-type(2) {
+    display: inline-block;
+    animation: sent-check .4s ease both;
+}
+
+@keyframes sent-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+}
+
+@keyframes sent-check {
+    from { opacity: 0; transform: scale(.4) rotate(-20deg); }
+    to { opacity: 1; transform: none; }
+}
+
+/* The advisory that was just sent slides in at the top of Recent advisories */
+.timeline > .timeline-new {
+    animation: advisory-in .6s cubic-bezier(.2, .8, .25, 1) both, advisory-glow 2.4s ease .3s both;
+    border-radius: 12px;
+}
+
+.sent-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--tint-green);
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 700;
+    vertical-align: 1px;
+    animation: sent-check .5s ease .2s both;
+}
+
+@keyframes advisory-in {
+    from { opacity: 0; transform: translateY(-14px) scale(.98); max-height: 0; }
+    to { opacity: 1; transform: none; max-height: 200px; }
+}
+
+@keyframes advisory-glow {
+    0%, 35% { background: var(--tint-green); box-shadow: 0 0 0 6px var(--tint-green); }
+    100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+}
+
+html[data-motion="off"] .timeline > .timeline-new,
+html[data-motion="off"] .sent-badge,
+html[data-motion="off"] .broadcast-btn {
+    animation: none !important;
+}

@@ -1,0 +1,183 @@
+/* ==========================================================================
+   Theme - dark mode tokens + overrides.
+   Light tokens live in style.css (:root). Everything here only applies
+   when <html data-theme="dark">.
+   ========================================================================== */
+
+/* Light is the default. Dark (below) switches the same controls together. */
+:root {
+    color-scheme: light;
+}
+
+/* Form controls inherit text color in both themes */
+input,
+select,
+textarea {
+    color: var(--text);
+}
+
+/* The open list must use the same pair as the closed control.
+   A light menu with the dark-theme text color is unreadable. */
+select {
+    color-scheme: light;
+}
+
+option {
+    color: #0f172a;
+    background-color: #ffffff;
+}
+
+.map-type select {
+    color: var(--text);
+}
+
+::placeholder {
+    color: var(--muted);
+    opacity: .8;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #0a111f;
+    --surface: #111a2b;
+    --surface-2: #0d1524;
+    --line: #1e2a40;
+    --line-soft: #172136;
+    --line-strong: #2d3c58;
+    --text: #e6ecf5;
+    --muted: #8d9db5;
+    --primary: #5b9bff;
+    --primary-soft: #132442;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --blue: #5b9bff;
+    --ink: #070c16;
+    --topbar-bg: rgba(10, 17, 31, .88);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 24px rgba(0, 0, 0, .28);
+
+    --tint-red: #2b1519;
+    --tint-amber: #2b2112;
+    --tint-green: #0e2a21;
+    --tint-blue: #12223d;
+    --tint-violet: #1b1e3d;
+}
+
+/* Sidebar is already dark: just deepen it a touch to separate from content */
+:root[data-theme="dark"] .sidebar {
+    border-right-color: #141d2e;
+}
+
+/* Buttons / chips / chrome */
+:root[data-theme="dark"] select {
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] option {
+    color: #f3f4f6;
+    background-color: #17191e;
+}
+
+:root[data-theme="dark"] .form-error,
+:root[data-theme="dark"] .analytics-widget[data-severity="critical"] strong {
+    color: var(--red);
+}
+
+:root[data-theme="dark"] .chip.active {
+    background: #26365a;
+    color: #fff;
+}
+
+:root[data-theme="dark"] .btn:hover {
+    border-color: var(--line-strong);
+    background: var(--surface-2);
+}
+
+:root[data-theme="dark"] .btn.primary:hover {
+    background: #d97706;
+}
+
+:root[data-theme="dark"] .sidebar .btn.ghost:hover {
+    background: #151d2e;
+}
+
+:root[data-theme="dark"] .live-pill {
+    background: var(--tint-green);
+}
+
+:root[data-theme="dark"] .avatar {
+    background: var(--primary-soft);
+}
+
+:root[data-theme="dark"] .stat-icon.violet { color: #a5b4fc; }
+
+/* Tags / status colors that used fixed dark text for light backgrounds */
+:root[data-theme="dark"] .tag.danger  { border-color: #5a2a31; }
+:root[data-theme="dark"] .tag.warning { border-color: #5a4720; }
+:root[data-theme="dark"] .tag.success { border-color: #1b5340; }
+:root[data-theme="dark"] .tag.info    { border-color: #25426f; }
+:root[data-theme="dark"] .tag.status-open { color: #a5b4fc; border-color: #353a73; }
+:root[data-theme="dark"] .tag.status-assigned { color: #a5b4fc; border-color: #353a73; }
+:root[data-theme="dark"] .tag.status-resolved,
+:root[data-theme="dark"] .tag.status-closed { color: #cbd5e1; }
+:root[data-theme="dark"] .tag.status-enroute { color: #a5b4fc; border-color: #353a73; }
+
+:root[data-theme="dark"] .kanban-card.selected,
+:root[data-theme="dark"] .report-card.selected { border-color: #25426f; }
+:root[data-theme="dark"] .kanban-card.sla-hot { border-color: #5a2a31; }
+
+:root[data-theme="dark"] .anomaly-row.severity-severe { border-left-color: #f87171; }
+:root[data-theme="dark"] [class*="severity-severe"] { color: inherit; }
+
+/* Hover lift shadows read as glow in dark: make them real shadows */
+:root[data-theme="dark"] .stat-card:hover,
+:root[data-theme="dark"] .analytics-widget:hover,
+:root[data-theme="dark"] .analytics-evidence > div:hover,
+:root[data-theme="dark"] .report-card:hover,
+:root[data-theme="dark"] .dispatch-card:hover,
+:root[data-theme="dark"] .recommendation:hover,
+:root[data-theme="dark"] .roster-card:hover,
+:root[data-theme="dark"] .kanban-card:hover {
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .4);
+}
+
+:root[data-theme="dark"] .modal-backdrop,
+:root[data-theme="dark"] .modal {
+    background-color: rgba(2, 6, 14, .7);
+}
+
+/* Maps (Leaflet) -------------------------------------------------------- */
+:root[data-theme="dark"] .leaflet-container {
+    background: #0b1220;
+}
+
+/* Darken street tiles; satellite imagery is left untouched */
+:root[data-theme="dark"] .map:not([data-basemap="satellite"]) .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.45) grayscale(.35);
+}
+
+:root[data-theme="dark"] .leaflet-popup-content-wrapper,
+:root[data-theme="dark"] .leaflet-popup-tip {
+    background: var(--surface);
+    color: var(--text);
+}
+
+:root[data-theme="dark"] .leaflet-bar a {
+    background: var(--surface);
+    color: var(--text);
+    border-bottom-color: var(--line);
+}
+
+:root[data-theme="dark"] .leaflet-bar a:hover {
+    background: var(--surface-2);
+}
+
+:root[data-theme="dark"] .leaflet-control-attribution {
+    background: rgba(10, 17, 31, .75) !important;
+    color: var(--muted);
+}
+
+:root[data-theme="dark"] .leaflet-control-attribution a {
+    color: var(--primary);
+}

@@ -1,0 +1,139 @@
+/* ==========================================================================
+   Sidebar - collapsible (Claude-style). State: <html data-sidebar="collapsed">
+   ========================================================================== */
+
+.sidebar,
+.main {
+    transition: width .25s ease, margin-left .25s ease, opacity var(--fade-out, .26s) ease, transform var(--fade-out, .26s) ease;
+}
+
+.sidebar {
+    overflow: hidden;
+}
+
+.brand {
+    position: relative;
+}
+
+.brand-text {
+    min-width: 0;
+    flex: 1;
+    white-space: nowrap;
+}
+
+.sidebar-toggle {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: background .2s ease, color .2s ease;
+}
+
+.sidebar-toggle:hover {
+    background: #1e293b;
+    color: #fff;
+}
+
+.sidebar-toggle .ico {
+    width: 19px;
+    height: 19px;
+}
+
+.nav-text {
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity .15s ease;
+}
+
+@media (min-width: 761px) {
+    html[data-sidebar="collapsed"] {
+        --sidebar-w: 72px;
+    }
+
+    html[data-sidebar="collapsed"] .brand {
+        justify-content: center;
+        padding: 4px 0 20px;
+    }
+
+    html[data-sidebar="collapsed"] .brand-mark,
+    html[data-sidebar="collapsed"] .brand-text {
+        display: none;
+    }
+
+    html[data-sidebar="collapsed"] .sidebar-toggle {
+        margin-left: 0;
+    }
+
+    html[data-sidebar="collapsed"] .nav-label {
+        font-size: 0;
+        height: 10px;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    html[data-sidebar="collapsed"] .nav {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    html[data-sidebar="collapsed"] .nav-item {
+        justify-content: center;
+        padding: 0;
+    }
+
+    html[data-sidebar="collapsed"] .nav-item:hover {
+        transform: none;
+    }
+
+    html[data-sidebar="collapsed"] .nav-text,
+    html[data-sidebar="collapsed"] .sidebar-version {
+        display: none;
+    }
+
+    html[data-sidebar="collapsed"] .settings-toggle {
+        justify-content: center;
+        padding: 0;
+    }
+
+    html[data-sidebar="collapsed"] .settings-chevron,
+    html[data-sidebar="collapsed"] .settings-menu {
+        display: none;
+    }
+
+    html[data-sidebar="collapsed"] .nav-badge {
+        position: absolute;
+        top: 5px;
+        right: 7px;
+        margin: 0;
+        padding: 1px 5px;
+        font-size: 9px;
+    }
+
+    html[data-sidebar="collapsed"] .sidebar .btn.ghost {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+}
+
+/* Brand now lives in the top bar */
+.brand {
+    padding-bottom: 14px;
+}
+
+.topbar-left {
+    gap: 14px;
+}
+
+.topbar-logo {
+    width: 42px;
+    height: 42px;
+    flex: none;
+    border-radius: 13px;
+    font-size: 15px;
+}

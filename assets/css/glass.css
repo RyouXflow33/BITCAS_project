@@ -1,0 +1,681 @@
+/* ==========================================================================
+   Glass / command-center look
+   - charcoal dark theme, translucent "glass" panels, light-weight numbers
+   - top pill navigation (default) or sidebar (html[data-nav="sidebar"])
+   - Traffic Map: full-bleed map with floating panels
+   ========================================================================== */
+
+:root {
+    --col-w: 330px;
+    --topbar-h: 64px;
+    --glass-bg: rgba(255, 255, 255, .82);
+    --glass-line: rgba(15, 23, 42, .09);
+    --glass-blur: blur(16px) saturate(1.25);
+    --tab-bg: rgba(15, 23, 42, .05);
+    --tab-active: #ffffff;
+    --tab-active-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+html[data-nav="sidebar"] {
+    --topbar-h: 76px;
+}
+
+:root[data-theme="dark"] {
+    --bg: #0b0c0f;
+    --surface: #17191e;
+    --surface-2: #111317;
+    --line: rgba(255, 255, 255, .08);
+    --line-soft: rgba(255, 255, 255, .05);
+    --line-strong: rgba(255, 255, 255, .16);
+    --text: #f3f4f6;
+    --muted: #8d929c;
+    --primary: #6ea8ff;
+    --primary-soft: rgba(110, 168, 255, .14);
+    --ink: #08090b;
+    --topbar-bg: rgba(11, 12, 15, .72);
+    --shadow: 0 12px 32px rgba(0, 0, 0, .38);
+
+    --tint-red: rgba(239, 68, 68, .13);
+    --tint-amber: rgba(245, 158, 11, .13);
+    --tint-green: rgba(16, 185, 129, .13);
+    --tint-blue: rgba(110, 168, 255, .13);
+    --tint-violet: rgba(139, 127, 255, .14);
+
+    --glass-bg: rgba(20, 22, 26, .66);
+    --glass-line: rgba(255, 255, 255, .09);
+    --tab-bg: rgba(255, 255, 255, .06);
+    --tab-active: rgba(255, 255, 255, .14);
+    --tab-active-shadow: none;
+}
+
+:root[data-theme="dark"] body {
+    background:
+        radial-gradient(900px 500px at 78% -8%, rgba(255, 255, 255, .05), transparent 70%),
+        var(--bg);
+}
+
+/* ---- Glass surfaces ------------------------------------------------------ */
+.panel,
+.stat-card,
+.camera-banner {
+    background: var(--glass-bg);
+    border-color: var(--glass-line);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+}
+
+.panel,
+.stat-card {
+    border-radius: 20px;
+}
+
+.panel-head {
+    background: transparent;
+    border-bottom-color: var(--glass-line);
+}
+
+.stat-card strong {
+    font-weight: 300;
+    font-size: 30px;
+    letter-spacing: -.04em;
+}
+
+.stat-card span {
+    font-weight: 400;
+}
+
+.btn {
+    border-radius: 999px;
+}
+
+.btn.ghost {
+    background: var(--glass-bg);
+    border-color: var(--glass-line);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+}
+
+.btn.tiny {
+    border-radius: 999px;
+}
+
+.chip {
+    background: var(--glass-bg);
+    border-color: var(--glass-line);
+}
+
+:root[data-theme="dark"] .chip.active {
+    background: rgba(255, 255, 255, .16);
+}
+
+/* ---- Top bar + pill tabs ------------------------------------------------- */
+.page-heading {
+    display: none;
+}
+
+.top-tabs,
+.tab-only {
+    display: none;
+}
+
+html:not([data-nav="sidebar"]) {
+    --sidebar-w: 0px;
+}
+
+html:not([data-nav="sidebar"]) .sidebar {
+    display: none;
+}
+
+html:not([data-nav="sidebar"]) .icon-btn.mobile-menu {
+    display: none;
+}
+
+html:not([data-nav="sidebar"]) .topbar {
+    height: var(--topbar-h);
+    padding: 0 20px;
+    gap: 22px;
+    justify-content: flex-start;
+    border-bottom-color: var(--glass-line);
+}
+
+html:not([data-nav="sidebar"]) .topbar-title {
+    display: none;
+}
+
+html:not([data-nav="sidebar"]) .topbar-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    font-size: 13px;
+}
+
+html:not([data-nav="sidebar"]) .top-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--tab-bg);
+    border: 1px solid var(--glass-line);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+html:not([data-nav="sidebar"]) .top-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+html:not([data-nav="sidebar"]) .tab-only {
+    display: grid;
+}
+
+html:not([data-nav="sidebar"]) .topbar-actions {
+    margin-left: auto;
+}
+
+html:not([data-nav="sidebar"]) .page-heading {
+    display: block;
+    margin: 0 0 20px;
+    font-size: 30px;
+    font-weight: 300;
+    letter-spacing: -.035em;
+}
+
+.top-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background .2s ease, color .2s ease;
+}
+
+.top-tab:hover {
+    color: var(--text);
+}
+
+.top-tab.active {
+    background: var(--tab-active);
+    color: var(--text);
+    box-shadow: var(--tab-active-shadow);
+}
+
+.tab-badge {
+    min-width: 18px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--orange);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.topbar-actions .icon-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--glass-line);
+    background: var(--tab-bg);
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    place-items: center;
+    transition: color .2s ease, background .2s ease;
+}
+
+.topbar-actions .icon-btn:hover,
+.topbar-actions .icon-btn.active {
+    color: var(--text);
+    background: var(--tab-active);
+}
+
+/* ---- Traffic Map stage --------------------------------------------------- */
+/* The big title now lives in the bottom dock; the page h1 stays for screen readers */
+body[data-page="command"] .page-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+body[data-page="command"] .content {
+    position: relative;
+    padding: 0;
+    max-width: none;
+    margin: 0;
+}
+
+html[data-nav="sidebar"] {
+    --col-w: 300px;
+}
+
+@media (max-width: 1400px) {
+    :root { --col-w: 300px; }
+}
+
+.map-stage {
+    position: relative;
+    height: calc(100vh - var(--topbar-h));
+    min-height: 640px;
+    overflow: hidden;
+}
+
+/* edge vignette so the floating panels sit on a darker frame */
+.map-stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(0, 0, 0, .5) 100%);
+}
+
+:root:not([data-theme="dark"]) .map-stage::after {
+    background: radial-gradient(ellipse at 50% 45%, transparent 60%, rgba(15, 23, 42, .16) 100%);
+}
+
+.map-stage .map-panel {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    overflow: hidden;
+}
+
+.map-stage .map {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    border: 0;
+    isolation: isolate;
+}
+
+/* Bottom dock: title, place, legend and layer controls */
+.map-stage .map-panel > .panel-head {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 22px;
+    margin: 0 auto;
+    width: max-content;
+    max-width: calc(100% - 2 * (var(--col-w) + 56px));
+    min-height: 0;
+    padding: 14px 16px 12px;
+    border: 1px solid var(--glass-line);
+    border-radius: 24px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.map-stage .panel-head .dock-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: -.035em;
+    line-height: 1.1;
+}
+
+.map-stage .panel-head > .dock-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 14px;
+    min-width: 0;
+}
+
+.stage-sub {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stage-place {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.stage-place .ico {
+    width: 14px;
+    height: 14px;
+    color: var(--primary);
+}
+
+.stage-sub .live-text {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.map-stage .panel-head > .panel-tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+}
+
+.map-stage .dock-info .map-legend-fixed {
+    position: static;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    font-size: 11px;
+}
+
+/* zoom + attribution stay clear of the side columns; the top of the map is free */
+.map-stage .leaflet-top.leaflet-left {
+    left: calc(var(--col-w) + 56px);
+    top: 14px;
+}
+
+.map-stage .leaflet-bottom.leaflet-right {
+    right: calc(var(--col-w) + 56px);
+    bottom: 4px;
+}
+
+/* Side columns */
+.stage-col {
+    position: absolute;
+    z-index: 20;
+    top: 18px;
+    bottom: 18px;
+    width: var(--col-w);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+}
+
+.stage-col::-webkit-scrollbar {
+    display: none;
+}
+
+.stage-left { left: 18px; }
+.stage-right { right: 18px; }
+
+.stage-col > * {
+    flex: none;
+    margin: 0;
+}
+
+.stage-col .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.stage-col .stat-card {
+    position: relative;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 0;
+    padding: 16px 16px 14px;
+}
+
+.stage-col .stat-card .stat-icon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+}
+
+.stage-col .stat-card .stat-icon .ico {
+    width: 15px;
+    height: 15px;
+}
+
+.stage-col .stat-card strong {
+    font-size: 28px;
+}
+
+.stage-col .form-grid {
+    grid-template-columns: 1fr;
+    padding: 14px 16px 16px;
+}
+
+.stage-col .form-grid textarea {
+    min-height: 64px;
+}
+
+.stage-right .activity-panel {
+    flex: 1 1 auto;
+    min-height: 170px;
+    display: flex;
+    flex-direction: column;
+}
+
+.stage-right .activity-panel .timeline {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.stage-col .camera-banner {
+    border-radius: 18px;
+}
+
+/* Simulate / Capture buttons: right under the camera banner */
+.stage-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.stage-actions .btn {
+    justify-content: center;
+    padding: 10px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.stage-actions .btn .ico {
+    width: 14px;
+    height: 14px;
+}
+
+.live-text i {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+}
+
+/* ---- Narrow screens: stack the stage ------------------------------------- */
+@media (max-width: 1180px) {
+    .map-stage {
+        height: auto;
+        min-height: 0;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 14px 16px 24px;
+    }
+
+    .map-stage::after {
+        display: none;
+    }
+
+    .map-stage .map-panel {
+        position: relative;
+        inset: auto;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--glass-line);
+        border-radius: 20px;
+    }
+
+    .map-stage .map {
+        position: relative;
+        inset: auto;
+        flex: none;
+        height: 420px;
+        min-height: 420px;
+        order: 1;
+    }
+
+    .map-stage .map-panel > .panel-head {
+        position: static;
+        order: 2;
+        width: auto;
+        max-width: none;
+        margin: 0;
+        border: 0;
+        border-top: 1px solid var(--glass-line);
+        border-radius: 0;
+        background: transparent;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    .stage-col {
+        position: static;
+        width: auto;
+        overflow: visible;
+    }
+
+    .stage-left { order: 4; }
+    .stage-right { order: 3; }
+
+    .stage-col .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .map-stage .leaflet-top.leaflet-left { left: 8px; top: 8px; }
+    .map-stage .leaflet-bottom.leaflet-right { right: 0; bottom: 0; }
+}
+
+@media (max-width: 760px) {
+    html:not([data-nav="sidebar"]) .topbar {
+        height: auto;
+        flex-wrap: wrap;
+        gap: 10px 12px;
+        padding: 10px 14px;
+    }
+
+    html:not([data-nav="sidebar"]) .top-tabs {
+        order: 3;
+        width: 100%;
+    }
+}
+
+/* ==========================================================================
+   Traffic Map: see-through top bar and side columns
+   ========================================================================== */
+:root {
+    --topbar-fade: rgba(255, 255, 255, .72);
+}
+
+:root[data-theme="dark"] {
+    --topbar-fade: rgba(6, 7, 9, .62);
+}
+
+/* lighter glass + stronger blur, only inside the map stage */
+.map-stage {
+    --glass-bg: rgba(255, 255, 255, .46);
+    --glass-line: rgba(15, 23, 42, .10);
+    --glass-blur: blur(22px) saturate(1.35);
+}
+
+:root[data-theme="dark"] .map-stage {
+    --glass-bg: rgba(18, 20, 24, .38);
+    --glass-line: rgba(255, 255, 255, .10);
+}
+
+.map-stage input,
+.map-stage select,
+.map-stage textarea {
+    background: rgba(255, 255, 255, .55);
+}
+
+:root[data-theme="dark"] .map-stage input,
+:root[data-theme="dark"] .map-stage select,
+:root[data-theme="dark"] .map-stage textarea {
+    background: rgba(255, 255, 255, .06);
+}
+
+.map-stage .chip,
+.map-stage .btn.ghost {
+    background: rgba(255, 255, 255, .45);
+}
+
+:root[data-theme="dark"] .map-stage .chip,
+:root[data-theme="dark"] .map-stage .btn.ghost {
+    background: rgba(255, 255, 255, .08);
+}
+
+:root[data-theme="dark"] .map-stage .chip.active {
+    background: rgba(255, 255, 255, .20);
+}
+
+/* Top bar floats over the map (wide screens) */
+@media (min-width: 1181px) {
+    body[data-page="command"] .main {
+        position: relative;
+    }
+
+    body[data-page="command"] .topbar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 40;
+        background: linear-gradient(to bottom, var(--topbar-fade), transparent);
+        border-bottom: 0;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    body[data-page="command"] .map-stage {
+        height: 100vh;
+        min-height: 700px;
+    }
+
+    body[data-page="command"] .stage-col {
+        top: calc(var(--topbar-h) + 8px);
+    }
+
+    body[data-page="command"] .map-stage .leaflet-top.leaflet-left {
+        top: calc(var(--topbar-h) + 14px);
+    }
+}
+
+.map-stage .chip.active {
+    background: #0f172a;
+    color: #fff;
+}
+
+:root[data-theme="dark"] .map-stage .chip.active {
+    background: rgba(255, 255, 255, .20);
+}
+
+.btn { text-decoration: none; }
