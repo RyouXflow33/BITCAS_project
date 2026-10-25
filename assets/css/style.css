@@ -2725,23 +2725,121 @@ textarea.system-log:focus {
     to { transform: none; opacity: 1; }
 }
 
+.log-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px 14px 0;
+}
+
+.log-stat {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+.log-stat span {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.log-stat strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+}
+
+.log-stat em {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-style: normal;
+    font-size: 12px;
+}
+
 .log-list {
     display: grid;
     gap: 8px;
+    padding: 14px;
+}
+
+.log-list .chart-empty {
+    padding: 8px 4px 4px;
 }
 
 .log-row {
     display: grid;
-    gap: 2px;
-    padding: 10px 12px;
+    grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto;
+    gap: 8px 14px;
+    align-items: center;
+    padding: 12px 14px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 14px;
     background: var(--surface);
 }
 
-.log-row span {
+.log-row strong {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.log-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    min-width: 0;
+}
+
+.log-facts span {
     color: var(--muted);
     font-size: 13px;
+}
+
+.log-times {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.log-time {
+    min-width: 148px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+}
+
+.log-time small {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.log-time b {
+    display: block;
+    margin-top: 2px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+@media (max-width: 800px) {
+    .log-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .log-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

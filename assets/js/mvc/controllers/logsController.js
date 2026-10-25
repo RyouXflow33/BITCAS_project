@@ -17,7 +17,7 @@ function initLogsPage() {
             renderLogLists(await loadLogs(range));
         } catch (error) {
             renderLogLists({ congestion: [], reports: [], assignments: [] });
-            const target = document.getElementById('congestionLog');
+            const target = document.getElementById('congestionSummary');
             if (target) target.innerHTML = `<div class="chart-empty">${escapeHtml(error.message || 'Could not load the logs.')}</div>`;
         }
     };

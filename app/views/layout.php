@@ -10,6 +10,7 @@ $styles = ['style', 'sidebar', 'theme', 'motion', 'settings', 'glass', 'charts',
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= APP_NAME ?> | <?= htmlspecialchars($pageTitle) ?></title>
     <meta name="description" content="BITCAS intelligent transport and emergency command interface">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f59e0b'/%3E%3C/svg%3E">
     <meta name="color-scheme" content="light dark">
     <!-- Runs before first paint: saved theme / navigation layout (no white flash) + loader failsafe -->
     <script src="assets/js/mvc/core/theme-init.js?v=<?= $stamp('assets/js/mvc/core/theme-init.js') ?>"></script>

@@ -26,28 +26,43 @@ try {
     $cutoff = time() - $seconds;
 
     $hours = [];
+    $hoursStored = 0;
+    $totalCrossings = 0;
+    $busiest = null;
     $hourRows = $pdo->query(
         'SELECT recorded_at, congestion_level, congestion_score, vehicles_in_frame_avg, vehicles_in_frame_peak, crossings
-         FROM traffic_hourly ORDER BY recorded_at DESC LIMIT 24 * 90'
+         FROM traffic_hourly ORDER BY recorded_at DESC LIMIT 2160'
     );
     foreach ($hourRows ? $hourRows->fetchAll() : [] as $row) {
         $when = strtotime((string)$row['recorded_at']);
         if ($when === false || $when < $cutoff) {
             continue;
         }
-        $hours[] = [
+        $hoursStored++;
+        $level = strtoupper((string)$row['congestion_level']);
+        $crossings = (int)$row['crossings'];
+        $score = (float)$row['congestion_score'];
+        $totalCrossings += $crossings;
+        $entry = [
             'recordedAt' => (string)$row['recorded_at'],
             'level' => (string)$row['congestion_level'],
-            'score' => (float)$row['congestion_score'],
+            'score' => $score,
             'vehiclesAvg' => (float)$row['vehicles_in_frame_avg'],
             'vehiclesPeak' => (int)$row['vehicles_in_frame_peak'],
-            'crossings' => (int)$row['crossings']
+            'crossings' => $crossings
         ];
+        if ($busiest === null || $score > $busiest['score'] || ($score === $busiest['score'] && $crossings > $busiest['crossings'])) {
+            $busiest = $entry;
+        }
+        // A quiet LIGHT hour with no crossings is not a congestion record.
+        if (in_array($level, ['MODERATE', 'HEAVY', 'CRITICAL'], true) || $crossings > 0) {
+            $hours[] = $entry;
+        }
     }
 
     $reports = [];
     $reportRows = $pdo->query(
-        'SELECT id, location, severity, congestion_score, status, created_at_iso, resolved_at_iso
+        'SELECT id, location, severity, congestion_score, vehicle_count, status, created_at_iso, resolved_at_iso
          FROM reports ORDER BY created_at_iso DESC LIMIT 200'
     );
     foreach ($reportRows ? $reportRows->fetchAll() : [] as $row) {
@@ -60,6 +75,7 @@ try {
             'location' => (string)$row['location'],
             'severity' => (string)$row['severity'],
             'score' => (int)$row['congestion_score'],
+            'vehicles' => (int)$row['vehicle_count'],
             'status' => (string)$row['status'],
             'openedAt' => (string)$row['created_at_iso'],
             'resolvedAt' => $row['resolved_at_iso'] !== null ? (string)$row['resolved_at_iso'] : null
@@ -98,6 +114,12 @@ try {
     echo json_encode([
         'ok' => true,
         'range' => $range === 'day' ? 'day' : 'week',
+        'summary' => [
+            'hoursStored' => $hoursStored,
+            'congestedHours' => count($hours),
+            'totalCrossings' => $totalCrossings,
+            'busiest' => $busiest
+        ],
         'congestion' => $hours,
         'reports' => $reports,
         'assignments' => $assignments
