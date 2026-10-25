@@ -35,8 +35,10 @@ function initAuth() {
                 window.location.href = 'index.php?page=accounts';
                 return;
             }
-            applyAuthUi(true, session, shell, overlay);
-            bootSession();
+            BitcasMotion.withLoader(() => {
+                applyAuthUi(true, session, shell, overlay);
+                bootSession();
+            });
         });
     }
 
@@ -49,7 +51,7 @@ function initAuth() {
             clearInterval(window.__bitcasVisionPoller);
             window.__bitcasVisionPoller = null;
         }
-        window.location.replace('index.php?page=command');
+        BitcasMotion.leave(() => window.location.replace('index.php?page=command'));
     };
 
     window.addEventListener('pageshow', (event) => {

@@ -17,6 +17,7 @@ function bootSession() {
     if (page === 'dispatch') initDispatchPage();
     if (page === 'accounts') initAccountsPage();
     if (page === 'logs') initLogsPage();
+    if (page === 'settings') initSettingsPage();
 
     refreshDeskState().then((updated) => {
         if (!updated) return;
@@ -26,6 +27,7 @@ function bootSession() {
         if (page === 'dispatch') renderDispatchPage();
         if (page === 'accounts') renderAccountsPage();
         if (page === 'analytics') renderAnalyticsPage();
+        if (page === 'settings') renderSettingsAccounts();
     });
 
     startGlobalVisionPoller();
@@ -38,6 +40,7 @@ function startGlobalVisionPoller() {
         if (!isDeskStateLoaded()) {
             const loaded = await refreshDeskState();
             if (loaded && document.body.dataset.page === 'accounts') renderAccountsPage();
+            if (loaded && document.body.dataset.page === 'settings') renderSettingsAccounts();
         } else {
             // The server opens congestion reports when the Pi uploads a HEAVY photo.
             // Read the saved list again now and then so the desk shows them without a reload.
@@ -81,6 +84,9 @@ function startGlobalVisionPoller() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    BitcasTheme.init();
+    BitcasMotion.init();
+    initPageBackdrop();
     setupSidebar();
     const isAuthed = initAuth();
     if (!isAuthed) return;

@@ -13,18 +13,12 @@ final class PageController {
         header('Pragma: no-cache');
         header('Expires: 0');
 
-        $requested = (string)($_GET['page'] ?? 'command');
-        $titles = [
-            'command' => 'Traffic Map',
-            'analytics' => 'Traffic Analytics',
-            'incidents' => 'Congestion Reports',
-            'dispatch' => 'Dispatch',
-            'accounts' => 'Desk accounts',
-            'logs' => 'Logs'
-        ];
-        $page = array_key_exists($requested, $titles) ? $requested : 'command';
-        $pageTitle = $titles[$page];
-        $viewFile = $page . '.php';
+        require_once dirname(__DIR__) . '/config.php';
+        $requested = (string)($_GET['page'] ?? APP_DEFAULT_PAGE);
+        $page = array_key_exists($requested, APP_PAGES) ? $requested : APP_DEFAULT_PAGE;
+        $pageTitle = APP_PAGES[$page]['title'];
+        $viewFile = APP_PAGES[$page]['file'];
+        $hasBackdrop = (bool)APP_PAGES[$page]['backdrop'];
         // Read again from MySQL, so a deleted or disabled account is signed out on the next page load.
         $initialSession = Auth::user();
 

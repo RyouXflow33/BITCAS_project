@@ -39,6 +39,7 @@ function renderAnalyticsPage() {
     renderDirectionSplit(metrics.directionSplit, capability);
     renderHotspotRanking();
     renderClassificationBreakdown();
+    renderChartsDashboard(metrics);
 }
 
 function renderDataScope(capability) {

@@ -135,10 +135,10 @@ function renderAdvisoryTimeline() {
     const html = !state.advisories.length
         ? emptyState('inbox', 'No advisories yet', 'Broadcast a message when congestion needs a public notice.')
         : state.advisories.slice(0, 8).map((advisory) => `
-        <div>
+        <div${advisory.id && advisory.id === newAdvisoryId ? ' class="timeline-new"' : ''}>
             <i class="timeline-dot ${severityDotClass(advisory.level)}"></i>
             <div>
-                <strong>${escapeHtml(advisory.level)} | ${escapeHtml(advisory.area)}</strong>
+                <strong>${escapeHtml(advisory.level)} | ${escapeHtml(advisory.area)}${advisory.id && advisory.id === newAdvisoryId ? ' <span class="sent-badge">Sent</span>' : ''}</strong>
                 <small>${escapeHtml(advisory.message)}</small><br>
                 <small>${escapeHtml(formatDateTime(advisory.sentAtIso))} · ${escapeHtml(advisory.channel || 'Push')}${advisory.createdByUserId ? ` · ${escapeHtml(userLabel(advisory.createdByUserId))}` : ''}</small>
             </div>
@@ -153,6 +153,8 @@ function renderAdvisoryTimeline() {
 function initLeafletMap() {
     const mapEl = document.getElementById('trafficMap');
     if (!mapEl || typeof L === 'undefined') return;
+
+    mapEl.dataset.basemap = 'osm';
 
     const center = [CAMERA_SITE.lat, CAMERA_SITE.lng];
     const map = L.map('trafficMap', {
@@ -190,6 +192,8 @@ function setMapType(type) {
     if (mapState.layers.basemap) mapState.map.removeLayer(mapState.layers.basemap);
     mapState.layers.basemap = createBasemapLayer(nextType).addTo(mapState.map);
     mapState.basemapType = nextType;
+    const mapElement = document.getElementById('trafficMap');
+    if (mapElement) mapElement.dataset.basemap = nextType;
 }
 
 function renderMapLayers() {

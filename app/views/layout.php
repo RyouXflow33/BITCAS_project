@@ -1,21 +1,36 @@
-<!doctype html>
-<html lang="en">
+<?php
+// Every local stylesheet/script carries its file time so a browser or Hostinger cache never serves an old copy.
+$assetRoot = dirname(__DIR__, 2);
+$stamp = static fn(string $path): int => (int)@filemtime($assetRoot . '/' . $path);
+$styles = ['style', 'sidebar', 'theme', 'motion', 'settings', 'glass', 'charts', 'backdrop'];
+?><!doctype html>
+<html lang="en" data-theme="dark" data-nav="tabs">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>BITCAS | <?= htmlspecialchars($pageTitle) ?></title>
+    <title><?= APP_NAME ?> | <?= htmlspecialchars($pageTitle) ?></title>
     <meta name="description" content="BITCAS intelligent transport and emergency command interface">
+    <meta name="color-scheme" content="light dark">
+    <!-- Runs before first paint: saved theme / navigation layout (no white flash) + loader failsafe -->
+    <script src="assets/js/mvc/core/theme-init.js?v=<?= $stamp('assets/js/mvc/core/theme-init.js') ?>"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-    <link rel="stylesheet" href="assets/css/style.css?v=<?= filemtime(dirname(__DIR__, 2) . '/assets/css/style.css') ?>">
+<?php foreach ($styles as $css): ?>
+    <link rel="stylesheet" href="assets/css/<?= $css ?>.css?v=<?= $stamp('assets/css/' . $css . '.css') ?>">
+<?php endforeach; ?>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <noscript><style>.page-loader{display:none!important}</style></noscript>
 </head>
-<body data-page="<?= htmlspecialchars($page) ?>">
+<body data-page="<?= htmlspecialchars($page) ?>"<?= $hasBackdrop ? ' class="has-backdrop"' : '' ?>>
 <?php render_icon_sprite(); ?>
+<?php include __DIR__ . '/partials/loader.php'; ?>
+<?php if ($hasBackdrop): ?>
+<div class="page-backdrop" id="pageBackdrop" aria-hidden="true"></div>
+<?php endif; ?>
 <div class="auth-overlay" id="authOverlay">
     <form class="login-card" id="loginForm" autocomplete="off">
         <div class="login-mark"><?= icon('map') ?></div>
-        <h2>BITCAS Login</h2>
-        <p>LGU Traffic Dashboard</p>
+        <h2><?= APP_NAME ?> Login</h2>
+        <p><?= APP_ORG ?></p>
 
         <label for="loginUsername">Username</label>
         <div class="field-wrap"><?= icon('user') ?><input id="loginUsername" name="bitcas-user" type="text" autocomplete="off" value="" required maxlength="32" pattern="[A-Za-z0-9._-]{3,32}"></div>
@@ -27,6 +42,7 @@
 
         <div id="loginError" class="login-error"></div>
         <button class="btn primary full" type="submit"><?= icon('login') ?> Login</button>
+        <div class="login-version">v<?= APP_VERSION ?></div>
     </form>
 </div>
 
@@ -34,28 +50,10 @@
     <?php include __DIR__ . '/partials/sidebar.php'; ?>
 
     <main class="main">
-        <header class="topbar">
-            <div class="topbar-left">
-                <button class="icon-btn mobile-menu" id="menuToggle" aria-label="Open navigation"><?= icon('menu') ?></button>
-                <div>
-                    <div class="eyebrow">BITCAS</div>
-                    <h1><?= htmlspecialchars($pageTitle) ?></h1>
-                </div>
-            </div>
-            <div class="topbar-actions">
-                <div class="live-pill"><span></span> Live</div>
-                <div class="user-chip">
-                    <div class="avatar" id="currentUserAvatar">LG</div>
-                    <div>
-                        <strong id="currentUserName">LGU Admin</strong>
-                        <small id="currentUserRole">Traffic Desk</small>
-                    </div>
-                </div>
-                <button class="btn ghost" id="logoutBtn" type="button"><?= icon('logout') ?> Logout</button>
-            </div>
-        </header>
+        <?php include __DIR__ . '/partials/topbar.php'; ?>
 
         <div class="content">
+            <h1 class="page-heading"><?= htmlspecialchars($pageTitle) ?></h1>
             <?php include __DIR__ . '/pages/' . $viewFile; ?>
         </div>
     </main>
@@ -67,13 +65,13 @@
 // Every local script carries its file time, so a browser or Hostinger cache can never serve an old copy
 // after an upload. Load order matters: core, models, views, controllers, then the bootstrap.
 $appScripts = [
-    'core/constants.js', 'core/helpers.js', 'core/inputRules.js',
+    'core/constants.js', 'core/helpers.js', 'core/inputRules.js', 'core/theme.js', 'core/motion.js', 'core/charts.js', 'core/backdrop.js',
     'models/store.js', 'models/analyticsModel.js',
-    'views/authView.js', 'views/commandView.js', 'views/analyticsView.js',
-    'views/reportsView.js', 'views/dispatchView.js', 'views/accountsView.js', 'views/logsView.js',
+    'views/authView.js', 'views/commandView.js', 'views/analyticsView.js', 'views/chartsView.js',
+    'views/reportsView.js', 'views/dispatchView.js', 'views/accountsView.js', 'views/logsView.js', 'views/settingsView.js',
     'controllers/authController.js', 'controllers/commandController.js',
-    'controllers/analyticsController.js', 'controllers/reportsController.js',
-    'controllers/dispatchController.js', 'controllers/accountsController.js', 'controllers/logsController.js',
+    'controllers/analyticsController.js', 'controllers/chartsController.js', 'controllers/reportsController.js',
+    'controllers/dispatchController.js', 'controllers/accountsController.js', 'controllers/logsController.js', 'controllers/settingsController.js',
     'app.js'
 ];
 $scriptRoot = dirname(__DIR__, 2) . '/assets/js/mvc/';

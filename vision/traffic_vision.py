@@ -156,6 +156,12 @@ def to_pixels(point, width, height):
     return (float(point[0]) * width, float(point[1]) * height)
 
 
+def ground_point(bbox):
+    """Bottom centre of the box: where the wheels meet the road, not the middle of the vehicle."""
+    x1, _y1, x2, y2 = bbox
+    return ((float(x1) + float(x2)) / 2.0, float(y2))
+
+
 def segments_intersect(p1, p2, p3, p4):
     """True when segment p1-p2 crosses segment p3-p4."""
     def orientation(a, b, c):
@@ -572,8 +578,7 @@ class CentroidTracker:
 
     def update(self, detections, now):
         """Associate detections with existing tracks; return the live tracks."""
-        centroids = [((d['bbox'][0] + d['bbox'][2]) / 2.0,
-                      (d['bbox'][1] + d['bbox'][3]) / 2.0) for d in detections]
+        centroids = [ground_point(d['bbox']) for d in detections]
 
         # Greedy nearest-neighbour: the shortest candidate pair wins first, so
         # one close match cannot be stolen by a more distant detection.
@@ -608,8 +613,7 @@ class CentroidTracker:
             else:
                 track = self.tracks[track_id]
                 track.bbox = _blend_box(track.bbox, detection['bbox'])
-                track.centroid = ((track.bbox[0] + track.bbox[2]) / 2.0,
-                                  (track.bbox[1] + track.bbox[3]) / 2.0)
+                track.centroid = ground_point(track.bbox)
                 track.note_class(detection['class_name'])
                 track.last_seen = now
                 track.hits += 1
@@ -1072,6 +1076,130 @@ def count_crossings_by_class(crossings):
     return dict(counts)
 
 
+def load_today_totals(path, camera_id, today):
+    """Rebuild today's count from crossings.jsonl so a restart does not start at zero."""
+    totals = {'total': 0, 'by_class': defaultdict(int), 'by_direction': defaultdict(int)}
+    if not path or not os.path.isfile(path):
+        return totals
+    day = today.isoformat()
+    try:
+        handle = open(path, encoding='utf-8')
+    except OSError:
+        return totals
+    with handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(row, dict) or row.get('camera_id') != camera_id:
+                continue
+            if not str(row.get('crossed_at') or '').startswith(day):
+                continue
+            totals['total'] += 1
+            totals['by_class'][str(row.get('vehicle_class') or 'unknown')] += 1
+            totals['by_direction'][str(row.get('direction') or 'unknown')] += 1
+    return totals
+
+
+def load_current_hour(path, camera_id, hour_start):
+    """Last hourly line for this hour, so a later flush adds to it instead of replacing it."""
+    stamp = hour_start.isoformat(timespec='seconds')
+    found = None
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        handle = open(path, encoding='utf-8')
+    except OSError:
+        return None
+    with handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get('camera_id') == camera_id and row.get('timestamp') == stamp:
+                found = row
+    return found
+
+
+def _sample_weight(record):
+    try:
+        weight = int(record.get('samples') or 0)
+    except (TypeError, ValueError):
+        weight = 0
+    return weight if weight > 0 else 1
+
+
+def _add_count_maps(previous, current, key):
+    merged = defaultdict(int)
+    for source in (previous, current):
+        for name, count in (source.get(key) or {}).items():
+            try:
+                merged[str(name)] += int(count)
+            except (TypeError, ValueError):
+                continue
+    return dict(merged)
+
+
+def merge_hourly_records(previous, current):
+    """Add this hour's new minutes onto the hourly record already stored for the same hour."""
+    if not previous or previous.get('timestamp') != current.get('timestamp'):
+        return current
+    prev_n = _sample_weight(previous)
+    cur_n = _sample_weight(current)
+    total_n = prev_n + cur_n
+
+    def weighted(key, places):
+        return round(
+            (float(previous.get(key) or 0) * prev_n + float(current.get(key) or 0) * cur_n) / total_n,
+            places,
+        )
+
+    prev_speed = previous.get('avg_speed_kph')
+    cur_speed = current.get('avg_speed_kph')
+    if prev_speed is None:
+        speed = cur_speed
+    elif cur_speed is None:
+        speed = prev_speed
+    else:
+        speed = round((float(prev_speed) * prev_n + float(cur_speed) * cur_n) / total_n, 1)
+
+    merged = dict(current)
+    merged['samples'] = prev_n + cur_n
+    merged['congestion_score'] = weighted('congestion_score', 1)
+    merged['peak_congestion_score'] = max(
+        float(previous.get('peak_congestion_score') or 0),
+        float(current.get('peak_congestion_score') or 0),
+    )
+    merged['vehicles_in_frame_avg'] = weighted('vehicles_in_frame_avg', 2)
+    merged['vehicles_in_frame_peak'] = max(
+        int(previous.get('vehicles_in_frame_peak') or 0),
+        int(current.get('vehicles_in_frame_peak') or 0),
+    )
+    merged['occupancy_pct'] = weighted('occupancy_pct', 1)
+    merged['avg_speed_kph'] = speed
+    merged['speed_calibrated'] = bool(previous.get('speed_calibrated') or current.get('speed_calibrated'))
+    merged['crossings'] = int(previous.get('crossings') or 0) + int(current.get('crossings') or 0)
+    merged['vehicle_types'] = _add_count_maps(previous, current, 'vehicle_types')
+    merged['crossing_types'] = _add_count_maps(previous, current, 'crossing_types')
+    merged['by_direction'] = _add_count_maps(previous, current, 'by_direction')
+    return merged
+
+
+def split_hour_bucket(current_hour, record_hour, hour_bucket, record):
+    """File a minute in its own hour. The old hour is returned for flushing first."""
+    if record_hour > current_hour:
+        return list(hour_bucket), [record], record_hour
+    return [], list(hour_bucket) + [record], current_hour
+
+
 # --------------------------------------------------------------------------
 # Main system
 # --------------------------------------------------------------------------
@@ -1118,18 +1246,27 @@ class TrafficVisionSystem:
 
         self.pending_crossings = []
         self.window_crossings = []
-        self.daily_totals = self._empty_totals()
         self.totals_date = date.today()
+        self.daily_totals = load_today_totals(
+            self.writer.crossings_file, self.config['camera_id'], self.totals_date
+        )
         self.history_bucket = []
         self.last_history_flush = time.monotonic()
         self.hour_bucket = []
         self.current_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
+        self.carried_hour = load_current_hour(
+            self.writer.hourly_file, self.config['camera_id'], self.current_hour
+        )
         self.last_snapshot_time = 0.0
         self.heavy_streak = 0
 
         print(f"BITCAS vision node | site: {self.config['site_name']} ({self.config['camera_id']})")
         print(f"Source: {video_source} | output: {os.path.abspath(output_file)}")
         print(f"History: {self.writer.history_file}")
+        if self.daily_totals['total']:
+            print(f"Restored today's count: {self.daily_totals['total']}")
+        if self.carried_hour:
+            print(f"Continuing this hour: {self.carried_hour.get('crossings', 0)} crossings already stored")
 
     @staticmethod
     def _empty_totals():
@@ -1374,8 +1511,15 @@ class TrafficVisionSystem:
         self.history_bucket = []
         self.last_history_flush = now_monotonic
 
-        self.hour_bucket.append(record)
-        self._flush_hourly()
+        record_hour = datetime.fromisoformat(record['timestamp']).replace(minute=0, second=0, microsecond=0)
+        to_flush, kept, new_hour = split_hour_bucket(
+            self.current_hour, record_hour, self.hour_bucket, record
+        )
+        if to_flush:
+            self.hour_bucket = to_flush
+            self._flush_hourly()
+        self.hour_bucket = kept
+        self.current_hour = new_hour
 
     def _flush_hourly(self, force=False):
         """Roll the collected minute records up into one record per hour."""
@@ -1388,8 +1532,11 @@ class TrafficVisionSystem:
         hourly_record = aggregate_minute_records(
             self.hour_bucket, self.config['camera_id'], self.current_hour, self.congestion
         )
+        hourly_record = merge_hourly_records(self.carried_hour, hourly_record)
+        hourly_record['congestion_level'] = self.congestion.level(int(round(hourly_record['congestion_score'])))
         self.writer.append_hourly(hourly_record)
         self.ingest.send_json({'kind': 'hourly', 'record': hourly_record})
+        self.carried_hour = None
         self.hour_bucket = []
         self.current_hour = hour_now
 

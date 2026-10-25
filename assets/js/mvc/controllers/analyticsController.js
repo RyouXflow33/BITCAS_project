@@ -1,6 +1,7 @@
 // MVC - Controller: Analytics page wiring and vision-history refresh.
 
 async function initAnalyticsPage() {
+    initChartStudio();
     // Minute history and hourly rollups are independent files; the page is
     // useful with either, so a missing one must not block the other.
     await Promise.all([refreshVisionHistory(), refreshVisionHourly()]);

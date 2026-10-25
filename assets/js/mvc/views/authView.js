@@ -1,10 +1,10 @@
 // MVC - View: sidebar, clock, auth UI and global navigation counters.
 
 function renderGlobalCounters() {
-    const navCount = document.getElementById('reportNavCount');
-    if (!navCount || !state) return;
-    const openCount = getOpenCameraReports().length;
-    navCount.textContent = String(openCount);
+    const badges = document.querySelectorAll('#reportNavCount, [data-report-count]');
+    if (!badges.length || !state) return;
+    const openCount = String(getOpenCameraReports().length);
+    badges.forEach((badge) => { badge.textContent = openCount; });
 }
 
 function applyAuthUi(isAuthed, session, shell, overlay) {
@@ -29,6 +29,25 @@ function setupSidebar() {
     const toggle = document.getElementById('menuToggle');
     if (toggle && sidebar) {
         toggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+    }
+
+    // Claude-style collapse: the icon in the sidebar header hides / shows the labels.
+    const collapse = document.getElementById('sidebarToggle');
+    if (collapse && sidebar) {
+        const root = document.documentElement;
+        const sync = () => collapse.setAttribute('aria-expanded', String(root.getAttribute('data-sidebar') !== 'collapsed'));
+        sync();
+        collapse.addEventListener('click', () => {
+            if (window.matchMedia('(max-width: 760px)').matches) {
+                sidebar.classList.remove('open');
+                return;
+            }
+            const collapsed = root.getAttribute('data-sidebar') === 'collapsed';
+            if (collapsed) root.removeAttribute('data-sidebar');
+            else root.setAttribute('data-sidebar', 'collapsed');
+            try { localStorage.setItem('bitcas_sidebar', collapsed ? 'expanded' : 'collapsed'); } catch (e) { /* ignore */ }
+            sync();
+        });
     }
 
     const settingsToggle = document.getElementById('settingsToggle');

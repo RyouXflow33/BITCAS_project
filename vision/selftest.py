@@ -163,6 +163,7 @@ def run():
         failures.append(f"hourly crossing_types {hourly_by_class} != crossings.jsonl {logged_by_class}")
 
     failures.extend(check_catch_up_replay())
+    failures.extend(check_restart_counts())
 
     print('===================================================')
     if failures:
@@ -230,6 +231,88 @@ def check_catch_up_replay():
     with open(client.ack_file, encoding='utf-8') as handle:
         if json.load(handle)['minute'] != expected[-1]:
             problems.append("acknowledged marker did not reach the newest row")
+    return problems
+
+
+def check_restart_counts():
+    """A restart must keep today's count, add onto this hour, and file the new hour separately."""
+    from datetime import date, datetime
+
+    problems = []
+    today = date.today()
+    workspace = tempfile.mkdtemp(prefix='bitcas_counts_')
+    crossings_path = os.path.join(workspace, 'crossings.jsonl')
+    rows = [
+        {'camera_id': 'CAM', 'crossed_at': today.isoformat() + 'T01:00:00',
+         'vehicle_class': 'car', 'direction': 'inbound'},
+        {'camera_id': 'CAM', 'crossed_at': today.isoformat() + 'T01:00:01',
+         'vehicle_class': 'motorcycle', 'direction': 'outbound'},
+        {'camera_id': 'CAM', 'crossed_at': '2000-01-01T00:00:00',
+         'vehicle_class': 'bus', 'direction': 'inbound'},
+        {'camera_id': 'OTHER', 'crossed_at': today.isoformat() + 'T01:00:02',
+         'vehicle_class': 'car', 'direction': 'inbound'},
+        'not-json',
+    ]
+    with open(crossings_path, 'w', encoding='utf-8') as handle:
+        for row in rows:
+            handle.write((row if isinstance(row, str) else json.dumps(row)) + '\n')
+
+    totals = tv.load_today_totals(crossings_path, 'CAM', today)
+    if totals['total'] != 2:
+        problems.append(f"today reload counted {totals['total']}, expected 2")
+    if totals['by_class'].get('car') != 1 or totals['by_class'].get('motorcycle') != 1:
+        problems.append(f"today reload classes {dict(totals['by_class'])}")
+    if totals['by_direction'].get('inbound') != 1 or totals['by_direction'].get('outbound') != 1:
+        problems.append(f"today reload directions {dict(totals['by_direction'])}")
+
+    hour = datetime(2026, 10, 25, 7, 0, 0)
+    hourly_path = os.path.join(workspace, 'traffic_hourly.jsonl')
+    partial = {
+        'camera_id': 'CAM', 'timestamp': hour.isoformat(timespec='seconds'), 'samples': 10,
+        'crossings': 4, 'congestion_score': 20, 'peak_congestion_score': 30,
+        'vehicles_in_frame_avg': 2, 'vehicles_in_frame_peak': 5, 'occupancy_pct': 10,
+        'avg_speed_kph': None, 'speed_calibrated': False,
+        'vehicle_types': {'car': 3}, 'crossing_types': {'car': 4}, 'by_direction': {'inbound': 4},
+    }
+    newer = dict(partial)
+    newer['timestamp'] = '2026-10-25T08:00:00'
+    with open(hourly_path, 'w', encoding='utf-8') as handle:
+        handle.write(json.dumps(partial) + '\n')
+        handle.write(json.dumps(newer) + '\n')
+        handle.write(json.dumps(partial | {'crossings': 6, 'samples': 12}) + '\n')
+    loaded = tv.load_current_hour(hourly_path, 'CAM', hour)
+    if not loaded or loaded.get('crossings') != 6:
+        problems.append(f"hourly reload kept {None if not loaded else loaded.get('crossings')}, expected the last line (6)")
+
+    fresh = {
+        'timestamp': hour.isoformat(timespec='seconds'), 'samples': 2, 'crossings': 1,
+        'congestion_score': 50, 'peak_congestion_score': 50,
+        'vehicles_in_frame_avg': 4, 'vehicles_in_frame_peak': 4, 'occupancy_pct': 20,
+        'avg_speed_kph': None, 'speed_calibrated': False,
+        'vehicle_types': {'motorcycle': 1}, 'crossing_types': {'motorcycle': 1},
+        'by_direction': {'outbound': 1},
+    }
+    merged = tv.merge_hourly_records(loaded, fresh)
+    if merged['crossings'] != 7 or merged['samples'] != 14:
+        problems.append(f"hourly merge crossings={merged['crossings']} samples={merged['samples']}, expected 7 and 14")
+    if merged['crossing_types'].get('car') != 4 or merged['crossing_types'].get('motorcycle') != 1:
+        problems.append(f"hourly merge classes {merged['crossing_types']}")
+    if abs(merged['congestion_score'] - round((20 * 12 + 50 * 2) / 14, 1)) > 0.05:
+        problems.append(f"hourly merge score {merged['congestion_score']} is not weighted by samples")
+
+    old_hour = datetime(2026, 10, 25, 7, 0, 0)
+    new_hour = datetime(2026, 10, 25, 8, 0, 0)
+    old_minute = {'timestamp': '2026-10-25T07:59:00', 'crossings': 3}
+    new_minute = {'timestamp': '2026-10-25T08:00:00', 'crossings': 1}
+    to_flush, kept, hour_after = tv.split_hour_bucket(old_hour, new_hour, [old_minute], new_minute)
+    if to_flush != [old_minute] or kept != [new_minute] or hour_after != new_hour:
+        problems.append("the first minute of a new hour was filed in the old hour")
+    same_flush, same_kept, same_hour = tv.split_hour_bucket(old_hour, old_hour, [old_minute], new_minute)
+    if same_flush or same_kept != [old_minute, new_minute] or same_hour != old_hour:
+        problems.append("a minute inside the same hour was split off")
+
+    if tv.ground_point((10, 20, 30, 80)) != (20.0, 80.0):
+        problems.append("ground point is not the bottom centre of the box")
     return problems
 
 

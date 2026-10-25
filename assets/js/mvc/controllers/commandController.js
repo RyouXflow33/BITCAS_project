@@ -1,5 +1,12 @@
 // MVC - Controller: Traffic Map (command) page events and vision polling.
 
+let newAdvisoryId = null;
+
+function setBroadcastLabel(button, text) {
+    const label = button && button.querySelector('.btn-label');
+    if (label) label.textContent = text;
+}
+
 function initCommandPage() {
     initLeafletMap();
     bindLayerChips();
@@ -77,14 +84,25 @@ function bindCommandActions() {
 
             const button = advisoryForm.querySelector('button[type="submit"]');
             if (button) button.disabled = true;
+            const animate = !!button && BitcasMotion.enabled;
+            if (animate) {
+                button.classList.add('is-sending');
+                setBroadcastLabel(button, 'Broadcasting...');
+            }
+            let sent = false;
             setText('advisoryStatus', 'Sending…');
             try {
                 const result = await publishAdvisory({ level, area, message });
                 advisoryForm.reset();
                 setValue('advisoryArea', 'Villamonte Street Intersection');
                 setText('advisoryStatus', result.push?.sent ? 'Sent to driver phones' : (result.push?.reason || 'Saved'));
-                renderCommandPage();
                 const sentId = result.advisory && result.advisory.id;
+                newAdvisoryId = sentId || null;
+                renderCommandPage();
+                sent = true;
+                window.setTimeout(() => {
+                    if (newAdvisoryId === sentId) { newAdvisoryId = null; renderCommandPage(); }
+                }, 6000);
                 window.setTimeout(async () => {
                     if (document.body.dataset.page !== 'command') return;
                     await refreshAdvisories();
@@ -97,7 +115,18 @@ function bindCommandActions() {
             } catch (error) {
                 setText('advisoryStatus', error.message || 'Broadcast failed');
             } finally {
-                if (button) button.disabled = false;
+                if (button) {
+                    button.disabled = false;
+                    button.classList.remove('is-sending');
+                    setBroadcastLabel(button, sent && animate ? 'Broadcast sent' : 'Broadcast advisory');
+                    if (sent && animate) {
+                        button.classList.add('is-sent');
+                        window.setTimeout(() => {
+                            button.classList.remove('is-sent');
+                            setBroadcastLabel(button, 'Broadcast advisory');
+                        }, 1800);
+                    }
+                }
             }
         });
     }

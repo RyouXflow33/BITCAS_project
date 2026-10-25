@@ -1,6 +1,8 @@
-<section class="page-head">
+<section class="dash-head">
     <div>
-        <span class="section-kicker"><?= icon('analytics') ?> Analytics</span>
+        <div class="breadcrumb"><?= icon('analytics') ?> Overview <span>/</span> <strong>Analytics</strong></div>
+        <h2 class="greeting" id="dashGreeting">Hello &#128075;</h2>
+        <p>Here are the latest insights from the traffic vision node.</p>
     </div>
     <div class="head-actions">
         <span class="tag info" id="analyticsSourceTag">VISION</span>
@@ -13,42 +15,99 @@
     <span id="analyticsScopeDetail">Reading from BITCAS MySQL database</span>
 </div>
 
-<div class="stats-grid">
+<div class="stats-grid analytics-kpis">
     <div class="stat-card" id="kpiThroughput">
         <div class="stat-icon blue"><?= icon('car') ?></div>
         <div><span>Vehicles counted today</span><strong id="aThroughputToday">--</strong><em id="aThroughputNote">Waiting for data</em></div>
+        <div class="spark" id="sparkThroughput"></div>
     </div>
     <div class="stat-card" id="kpiFlow">
         <div class="stat-icon violet"><?= icon('flow') ?></div>
         <div><span>Traffic flow</span><strong id="aFlowRate">--</strong><em id="aFlowNote">Waiting for data</em></div>
+        <div class="spark" id="sparkFlow"></div>
     </div>
     <div class="stat-card" id="kpiSpeed">
         <div class="stat-icon green"><?= icon('gauge') ?></div>
         <div><span>Average speed</span><strong id="aAvgSpeed">--</strong><em id="aAvgSpeedNote">Waiting for data</em></div>
+        <div class="spark" id="sparkSpeed"></div>
     </div>
     <div class="stat-card" id="kpiOccupancy">
         <div class="stat-icon yellow"><?= icon('percent') ?></div>
         <div><span>Road occupancy</span><strong id="aAvgOccupancy">--</strong><em id="aAvgOccupancyNote">Waiting for data</em></div>
+        <div class="spark" id="sparkOccupancy"></div>
     </div>
 </div>
 
-<div class="analytics-grid analytics-grid-alerts">
-    <section class="panel" id="anomalyPanel">
+<div class="studio-row">
+    <section class="panel chart-studio">
         <div class="panel-head">
-            <div><h2><?= icon('alert') ?> Incident detection</h2><span id="anomalyWindow">Last 10 minutes</span></div>
-            <span class="tag" id="anomalyTag">--</span>
+            <div><h2><?= icon('activity') ?> Traffic trend</h2><span id="studioSubtitle">Hourly profile</span></div>
+            <div class="studio-controls">
+                <select id="studioDataset" class="pill-select" aria-label="Data to chart"></select>
+            </div>
         </div>
-        <div id="anomalyList"></div>
-    </section>
-    <section class="panel" id="forecastPanel">
-        <div class="panel-head">
-            <div><h2><?= icon('activity') ?> Congestion forecast</h2><span>Next 15 to 60 minutes</span></div>
-            <span class="axis-note" id="forecastNow">--</span>
+        <div class="studio-types">
+            <div class="segmented" id="studioType" role="tablist" aria-label="Chart type">
+                <button type="button" data-type="column">Column</button>
+                <button type="button" data-type="bar">Bar</button>
+                <button type="button" data-type="line">Line</button>
+                <button type="button" data-type="area">Area</button>
+                <button type="button" data-type="histogram">Histogram</button>
+                <button type="button" data-type="pie">Pie</button>
+            </div>
         </div>
-        <div class="forecast-row" id="forecastList"></div>
-        <div class="panel-note" id="forecastNote"></div>
+        <div class="studio-summary">
+            <strong id="studioBig">--</strong>
+            <span id="studioDelta"></span>
+            <small id="studioNote"></small>
+        </div>
+        <div class="studio-chart" id="studioChart"></div>
     </section>
+
+    <div class="studio-side">
+        <section class="panel" id="anomalyPanel">
+            <div class="panel-head">
+                <div><h2><?= icon('alert') ?> Incident detection</h2><span id="anomalyWindow">Last 10 minutes</span></div>
+                <span class="tag" id="anomalyTag">--</span>
+            </div>
+            <div id="anomalyList"></div>
+        </section>
+        <section class="panel" id="forecastPanel">
+            <div class="panel-head">
+                <div><h2><?= icon('activity') ?> Congestion forecast</h2><span>Next 15 to 60 minutes</span></div>
+                <span class="axis-note" id="forecastNow">--</span>
+            </div>
+            <div class="forecast-row" id="forecastList"></div>
+            <div class="panel-note" id="forecastNote"></div>
+        </section>
+    </div>
 </div>
+
+<div class="gallery-head">
+    <h2>Chart types</h2>
+    <span>The same traffic data, six ways to read it</span>
+</div>
+<div class="chart-gallery">
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Column chart</h2><span id="galColumnSub"></span></div></div><div class="gallery-chart" id="galColumn"></div></section>
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Bar chart</h2><span id="galBarSub"></span></div></div><div class="gallery-chart" id="galBar"></div></section>
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Line chart</h2><span id="galLineSub"></span></div></div><div class="gallery-chart" id="galLine"></div></section>
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Area chart</h2><span id="galAreaSub"></span></div></div><div class="gallery-chart" id="galArea"></div></section>
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Histogram</h2><span id="galHistogramSub"></span></div></div><div class="gallery-chart" id="galHistogram"></div></section>
+    <section class="panel gallery-card"><div class="panel-head"><div><h2>Pie chart</h2><span id="galPieSub"></span></div></div><div class="gallery-chart" id="galPie"></div></section>
+</div>
+
+<section class="panel table-panel">
+    <div class="panel-head">
+        <div><h2><?= icon('reports') ?> Report monitoring</h2><span id="reportTableCount">0 of 0</span></div>
+        <label class="table-search"><?= icon('search') ?><input id="reportTableSearch" type="search" placeholder="Search report, location, status" autocomplete="off"></label>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Report ID</th><th>Location</th><th>Priority</th><th>Assigned to</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody id="reportTableBody"></tbody>
+        </table>
+    </div>
+</section>
 
 <section class="panel heatmap-panel">
     <div class="panel-head">
