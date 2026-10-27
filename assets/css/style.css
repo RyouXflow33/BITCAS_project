@@ -1855,6 +1855,10 @@ textarea.system-log:focus {
     font-size: 12px;
 }
 
+#deskSaveNotice {
+    margin: 0 0 12px;
+}
+
 .roster-grid {
     padding: 8px;
     display: grid;

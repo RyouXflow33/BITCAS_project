@@ -55,6 +55,7 @@ $styles = ['style', 'sidebar', 'theme', 'motion', 'settings', 'glass', 'charts',
 
         <div class="content">
             <h1 class="page-heading"><?= htmlspecialchars($pageTitle) ?></h1>
+            <p id="deskSaveNotice" class="form-error" hidden></p>
             <?php include __DIR__ . '/pages/' . $viewFile; ?>
         </div>
     </main>

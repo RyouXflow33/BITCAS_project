@@ -50,23 +50,62 @@ function queueDeskSave() {
     }
     deskSaveInFlight = true;
     deskSaveQueued = false;
+    let deskSaveFailed = false;
     fetch(DESK_STATE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, basedOnServerState: true })
-    }).then((response) => {
+    }).then(async (response) => {
         if (response.ok && signature === JSON.stringify(deskStatePayload(state))) {
             lastSyncedDeskSignature = signature;
+            showDeskSaveNotice('');
+            return;
+        }
+        if (response.ok) return;
+        deskSaveFailed = true;
+        const body = await response.json().catch(() => ({}));
+        showDeskSaveNotice(body.error || 'That change was not saved.');
+        if (!deskSaveQueued) {
+            deskSaveInFlight = false;
+            const reloaded = await refreshDeskState();
+            if (reloaded) renderCurrentDeskPage();
         }
     }).catch(() => {
-        // The next desk change sends the current list again.
+        deskSaveFailed = true;
+        showDeskSaveNotice('That change was not saved. Check the connection and try again.');
     }).finally(() => {
         deskSaveInFlight = false;
+        if (deskSaveFailed) {
+            if (deskSaveQueued) {
+                deskSaveQueued = false;
+                queueDeskSave();
+            }
+            return;
+        }
         if (deskSaveQueued || signature !== JSON.stringify(deskStatePayload(state))) {
             deskSaveQueued = false;
             queueDeskSave();
         }
     });
+}
+
+function showDeskSaveNotice(message) {
+    const el = document.getElementById('deskSaveNotice');
+    if (!el) return;
+    const text = String(message || '').trim();
+    el.hidden = text === '';
+    el.textContent = text;
+}
+
+function renderCurrentDeskPage() {
+    const page = document.body.dataset.page;
+    if (page === 'command') renderCommandPage();
+    if (page === 'incidents') renderReportsPage();
+    if (page === 'dispatch') renderDispatchPage();
+    if (page === 'accounts') renderAccountsPage();
+    if (page === 'analytics') renderAnalyticsPage();
+    if (page === 'settings' && typeof renderSettingsAccounts === 'function') renderSettingsAccounts();
+    renderGlobalCounters();
 }
 
 async function refreshDeskState() {

@@ -456,9 +456,36 @@ final class DeskStore {
         return (int)$stmt->fetchColumn();
     }
 
+    // A value already stored may stay, even when a newer rule would reject it.
+    // Changing status on assign rewrites the row, and one old field must not roll the assignment back.
+    private static function storedField(?array $row, string $field): ?string {
+        if ($row === null || !array_key_exists($field, $row) || $row[$field] === null) {
+            return null;
+        }
+        return (string)$row[$field];
+    }
+
+    private static function acceptStored(callable $rule, string $incoming, ?string $stored): string {
+        try {
+            return $rule($incoming);
+        } catch (InvalidArgumentException $error) {
+            if ($stored !== null && trim($stored) === trim($incoming)) {
+                return trim($incoming);
+            }
+            throw $error;
+        }
+    }
+
     private static function replaceReports(PDO $pdo, array $reports): void {
         // Insert or update by id. Nothing is deleted here, so a page that has not yet seen a
         // report the camera just opened cannot erase it.
+        $storedReports = [];
+        $existingReports = $pdo->query(
+            'SELECT id, location, severity, congestion_score, vehicle_count, status, context, notes FROM reports'
+        );
+        foreach ($existingReports ? $existingReports->fetchAll() : [] as $row) {
+            $storedReports[(string)$row['id']] = $row;
+        }
         $stmt = $pdo->prepare(
             'REPLACE INTO reports (
                 id, location, camera_id, severity, congestion_score, vehicle_count,
@@ -477,21 +504,38 @@ final class DeskStore {
                 continue;
             }
             $createdAt = (string)($report['createdAtIso'] ?? gmdate('Y-m-d\TH:i:s\Z'));
+            $stored = $storedReports[(string)$report['id']] ?? null;
             $severity = (string)($report['severity'] ?? 'High');
             if (!in_array($severity, ['Low', 'Moderate', 'High', 'Severe'], true)) {
-                throw new InvalidArgumentException('Congestion class must be Low, Moderate, or High.');
+                if ($stored === null || (string)$stored['severity'] !== $severity) {
+                    throw new InvalidArgumentException('Congestion class must be Low, Moderate, or High.');
+                }
             }
             $status = (string)($report['status'] ?? 'Open');
             if (!in_array($status, ['Open', 'Assigned', 'Resolved'], true)) {
-                throw new InvalidArgumentException('Report status must be Open, Assigned, or Resolved.');
+                if ($stored === null || (string)$stored['status'] !== $status) {
+                    throw new InvalidArgumentException('Report status must be Open, Assigned, or Resolved.');
+                }
             }
             $stmt->execute([
                 ':id' => (string)$report['id'],
-                ':location' => InputRules::shortText((string)($report['location'] ?? ''), 'Location', 160, true),
+                ':location' => self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Location', 160, true),
+                    (string)($report['location'] ?? ''),
+                    self::storedField($stored, 'location')
+                ),
                 ':camera_id' => !empty($report['cameraId']) ? (string)$report['cameraId'] : null,
                 ':severity' => $severity,
-                ':congestion_score' => InputRules::wholeNumber($report['congestionScore'] ?? 0, 'Congestion score', 0, 100),
-                ':vehicle_count' => InputRules::wholeNumber($report['vehicleCount'] ?? 0, 'Vehicle count', 0, 500),
+                ':congestion_score' => (int)self::acceptStored(
+                    static fn(string $value): string => (string)InputRules::wholeNumber($value, 'Congestion score', 0, 100),
+                    (string)($report['congestionScore'] ?? 0),
+                    self::storedField($stored, 'congestion_score')
+                ),
+                ':vehicle_count' => (int)self::acceptStored(
+                    static fn(string $value): string => (string)InputRules::wholeNumber($value, 'Vehicle count', 0, 500),
+                    (string)($report['vehicleCount'] ?? 0),
+                    self::storedField($stored, 'vehicle_count')
+                ),
                 ':occupancy_pct' => isset($report['occupancyPct']) && is_numeric($report['occupancyPct'])
                     ? (float)$report['occupancyPct']
                     : null,
@@ -502,8 +546,16 @@ final class DeskStore {
                 ':lat' => isset($report['lat']) && is_numeric($report['lat']) ? (float)$report['lat'] : 10.6642688,
                 ':lng' => isset($report['lng']) && is_numeric($report['lng']) ? (float)$report['lng'] : 122.9675934,
                 ':source' => (string)($report['source'] ?? 'Vision system'),
-                ':context' => InputRules::note((string)($report['context'] ?? ''), 'System log', 500),
-                ':notes' => InputRules::note((string)($report['notes'] ?? ''), 'Remarks', 500),
+                ':context' => self::acceptStored(
+                    static fn(string $value): string => InputRules::note($value, 'System log', 500),
+                    (string)($report['context'] ?? ''),
+                    self::storedField($stored, 'context')
+                ),
+                ':notes' => self::acceptStored(
+                    static fn(string $value): string => InputRules::note($value, 'Remarks', 500),
+                    (string)($report['notes'] ?? ''),
+                    self::storedField($stored, 'notes')
+                ),
                 ':false_positive' => !empty($report['falsePositive']) ? 1 : 0,
                 ':snapshot_url' => !empty($report['snapshotUrl']) ? (string)$report['snapshotUrl'] : null,
                 ':created_at_iso' => $createdAt,
@@ -525,27 +577,71 @@ final class DeskStore {
                 :shift_start, :shift_end, :rest_day, :status, :skills_json, :date_assigned
             )'
         );
+        $storedOfficers = [];
+        $existingOfficers = $pdo->query(
+            'SELECT id, name, full_name, rank_title, contact, radio, zone, skills_json FROM officers'
+        );
+        foreach ($existingOfficers ? $existingOfficers->fetchAll() : [] as $row) {
+            $storedOfficers[strtoupper((string)$row['id'])] = $row;
+        }
         foreach ($officers as $officer) {
             if (!is_array($officer) || empty($officer['id'])) {
                 continue;
             }
             $id = InputRules::badge((string)$officer['id']);
-            $fullName = InputRules::personName((string)($officer['fullName'] ?? $officer['name'] ?? ''), 'Officer name');
+            $stored = $storedOfficers[$id] ?? null;
+            $storedSkills = [];
+            if ($stored) {
+                $decoded = json_decode((string)$stored['skills_json'], true);
+                if (is_array($decoded)) {
+                    $storedSkills = array_map(static fn($skill): string => trim((string)$skill), $decoded);
+                }
+            }
+            $fullName = self::acceptStored(
+                static fn(string $value): string => InputRules::personName($value, 'Officer name'),
+                (string)($officer['fullName'] ?? $officer['name'] ?? ''),
+                self::storedField($stored, 'full_name')
+            );
             $skills = isset($officer['skills']) && is_array($officer['skills']) && $officer['skills']
                 ? array_values($officer['skills'])
                 : ['Traffic control'];
             $cleanSkills = [];
             foreach (array_slice($skills, 0, 8) as $skill) {
-                $cleanSkills[] = InputRules::shortText((string)$skill, 'Skill', 40, true);
+                $skillText = trim((string)$skill);
+                $cleanSkills[] = self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Skill', 40, true),
+                    $skillText,
+                    in_array($skillText, $storedSkills, true) ? $skillText : null
+                );
             }
             $stmt->execute([
                 ':id' => $id,
-                ':name' => InputRules::shortText((string)($officer['name'] ?? $fullName), 'Officer name', 60, true),
+                ':name' => self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Officer name', 60, true),
+                    (string)($officer['name'] ?? $fullName),
+                    self::storedField($stored, 'name')
+                ),
                 ':full_name' => $fullName,
-                ':rank_title' => InputRules::shortText((string)($officer['rank'] ?? 'Traffic Enforcer'), 'Rank', 40, true),
-                ':contact' => InputRules::contact((string)($officer['contact'] ?? '--')),
-                ':radio' => InputRules::shortText((string)($officer['radio'] ?? $id), 'Radio', 40, true),
-                ':zone' => InputRules::shortText((string)($officer['zone'] ?? 'Villamonte'), 'Zone', 40, true),
+                ':rank_title' => self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Rank', 40, true),
+                    (string)($officer['rank'] ?? 'Traffic Enforcer'),
+                    self::storedField($stored, 'rank_title')
+                ),
+                ':contact' => self::acceptStored(
+                    static fn(string $value): string => InputRules::contact($value),
+                    (string)($officer['contact'] ?? '--'),
+                    self::storedField($stored, 'contact')
+                ),
+                ':radio' => self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Radio', 40, true),
+                    (string)($officer['radio'] ?? $id),
+                    self::storedField($stored, 'radio')
+                ),
+                ':zone' => self::acceptStored(
+                    static fn(string $value): string => InputRules::shortText($value, 'Zone', 40, true),
+                    (string)($officer['zone'] ?? 'Villamonte'),
+                    self::storedField($stored, 'zone')
+                ),
                 ':shift_start' => (string)($officer['shiftStart'] ?? '06:00'),
                 ':shift_end' => (string)($officer['shiftEnd'] ?? '14:00'),
                 ':rest_day' => (string)($officer['restDay'] ?? 'Sunday'),
