@@ -61,7 +61,9 @@ function renderDataScope(capability) {
     scope.innerHTML = `
         <strong>${capability.sampleCount} minute readings over ${capability.spanLabel}</strong>
         <span>${missing.length
-            ? `Unavailable in this dataset: ${missing.join(', ')}. Run vision/calibrate.py to enable them.`
+            ? (missing.length === 1 && missing[0] === 'speed'
+                ? 'Speed is not in the older minutes. New readings include km/h after the lane measurement.'
+                : `Unavailable in this dataset: ${missing.join(', ')}.`)
             : 'Counting line and speed calibration both active.'}</span>
     `;
 }

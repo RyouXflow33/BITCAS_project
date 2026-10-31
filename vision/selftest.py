@@ -85,7 +85,13 @@ def run():
     tv.RemoteIngestClient._load = lambda self, config_path: None
 
     output_file = os.path.join(workspace, 'congestion.json')
-    system = tv.TrafficVisionSystem(video_source=0, output_file=output_file, update_interval=0.2)
+    # The synthetic cars cross the built-in line. The Villamonte site file is a
+    # different road shape and must not decide whether this test passes.
+    config_file = os.path.join(workspace, 'site_config.json')
+    with open(config_file, 'w', encoding='utf-8') as handle:
+        json.dump(tv.CONFIG_DEFAULTS, handle)
+    system = tv.TrafficVisionSystem(
+        video_source=0, output_file=output_file, update_interval=0.2, config_file=config_file)
     system.history_interval = 0.5
     system.run(display_output=False)
 

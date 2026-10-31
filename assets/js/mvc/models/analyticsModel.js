@@ -106,7 +106,7 @@ function computeDataCapability(telemetry, hourly) {
 
 const UNAVAILABLE_REASONS = {
     throughput: 'Needs a calibrated counting line (run vision/calibrate.py)',
-    speed: 'Needs speed calibration (run vision/calibrate.py, mode 3)',
+    speed: 'Not in the saved minutes yet. New readings include it after the lane measurement.',
     occupancy: 'Needs a vision node running v2',
     directions: 'Needs a calibrated counting line',
     dayHistory: 'Needs at least 24 hours of collected history',

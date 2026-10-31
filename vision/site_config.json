@@ -14,16 +14,16 @@
   "lng": 122.9675934,
 
   "roi": {
-    "calibrated": false,
-    "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    "calibrated": true,
+    "polygon": [[0.18, 0.44], [0.46, 0.35], [0.50, 0.50], [0.68, 0.70], [0.60, 0.98], [0.28, 0.98], [0.18, 0.62]]
   },
 
   "counting_lines": [
     {
       "id": "main",
-      "calibrated": false,
-      "start": [0.06, 0.54],
-      "end": [0.94, 0.54],
+      "calibrated": true,
+      "start": [0.20, 0.42],
+      "end": [0.46, 0.38],
       "positive_direction": "inbound",
       "negative_direction": "outbound"
     }
@@ -32,15 +32,15 @@
   "lanes": [],
 
   "calibration": {
-    "calibrated": false,
-    "_note": "image_points are 4 normalised frame points on the road surface; world_points are the SAME points in metres on the ground plane, measured with a tape at the site. Order must match.",
-    "image_points": [[0.30, 0.90], [0.70, 0.90], [0.62, 0.55], [0.38, 0.55]],
-    "world_points": [[0.0, 0.0], [3.5, 0.0], [3.5, 15.0], [0.0, 15.0]]
+    "calibrated": true,
+    "_note": "Estimate for the inbound lane, not a tape measurement. Near edge to far edge is 12 m, and the lane is 3.5 m wide. Order is near-left, near-right, far-right, far-left. Replace both numbers after measuring the asphalt.",
+    "image_points": [[0.28, 0.98], [0.60, 0.98], [0.46, 0.40], [0.20, 0.42]],
+    "world_points": [[0.0, 0.0], [3.5, 0.0], [3.5, 12.0], [0.0, 12.0]]
   },
 
   "congestion": {
-    "_note": "capacity is how many vehicles this camera view holds when packed. busy_occupancy is the frame coverage that counts as a full road while the ROI is still the whole frame (after calibrate.py draws the road, occupancy is used raw). stopped_pps / free_flow_pps score pause vs motion in pixels/sec when km/h is not calibrated. Bands stay LIGHT 0-39, MODERATE 40-64, HEAVY 65-100.",
-    "capacity_vehicles": 12,
+    "_note": "capacity is how many vehicles this one inbound lane holds in the frame when packed. One vehicle close to the lens no longer counts as a full road. Bands stay LIGHT 0-39, MODERATE 40-64, HEAVY 65-100.",
+    "capacity_vehicles": 5,
     "free_flow_kph": 40.0,
     "weights": { "occupancy": 0.45, "load": 0.30, "slowness": 0.25 },
     "bands": { "moderate": 40, "heavy": 65, "critical": 85 },

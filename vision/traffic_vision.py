@@ -415,14 +415,35 @@ def _blend_box(previous, current, weight=0.55):
     return tuple(int(round(previous[index] * keep + current[index] * weight)) for index in range(4))
 
 
+def _same_vehicle(first, second):
+    """True when two boxes are one vehicle, even if YOLO called them different classes."""
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    if inter <= 0:
+        return False
+    area_a = max(1, (first[2] - first[0]) * (first[3] - first[1]))
+    area_b = max(1, (second[2] - second[0]) * (second[3] - second[1]))
+    smaller = min(area_a, area_b)
+    # A box sitting inside a bigger box is the same vehicle. IoU alone misses that,
+    # because the small box is only a fraction of the large one.
+    if inter / float(smaller) >= 0.35:
+        return True
+    return inter / float(area_a + area_b - inter) >= 0.30
+
+
 def _suppress_overlapping_boxes(detections):
-    """Keep the stronger box when two of the same class cover the same vehicle."""
-    ordered = sorted(detections, key=lambda item: item['confidence'], reverse=True)
+    """One box per vehicle. The larger box wins, so a second class label cannot double-count it."""
+    ordered = sorted(
+        detections,
+        key=lambda item: (item['bbox'][2] - item['bbox'][0]) * (item['bbox'][3] - item['bbox'][1]),
+        reverse=True
+    )
     kept = []
     for detection in ordered:
-        box = detection['bbox']
-        if any(detection['class_name'] == other['class_name'] and _box_iou(box, other['bbox']) >= 0.45
-               for other in kept):
+        if any(_same_vehicle(detection['bbox'], other['bbox']) for other in kept):
             continue
         kept.append(detection)
     return kept
@@ -606,6 +627,19 @@ class CentroidTracker:
             track_id = assignments.get(det_index)
 
             if track_id is None:
+                # A second box on a vehicle already being followed must not become a new ID.
+                for existing_id, existing in self.tracks.items():
+                    if not _same_vehicle(detection['bbox'], existing.bbox):
+                        continue
+                    if existing_id in taken_tracks:
+                        track_id = -1
+                        break
+                    track_id = existing_id
+                    taken_tracks.add(existing_id)
+                    break
+            if track_id == -1:
+                continue
+            if track_id is None:
                 track_id = self._next_id
                 self._next_id += 1
                 track = Track(track_id, detection, centroid, now)
@@ -712,11 +746,15 @@ class CongestionModel:
             self._samples.popleft()
         return sum(sample[1] for sample in self._samples) / len(self._samples)
 
-    def occupancy_term(self, occupancy_fraction):
+    def occupancy_term(self, occupancy_fraction, vehicle_count=0):
         occupancy = min(1.0, max(0.0, occupancy_fraction))
-        if self.roi_calibrated:
-            return occupancy
-        return min(1.0, occupancy / self.busy_occupancy)
+        if not self.roi_calibrated:
+            return min(1.0, occupancy / self.busy_occupancy)
+        # This lane is close to the lens, so one bus can cover most of it.
+        # HEAVY has to be a queue, not a single foreground vehicle.
+        if vehicle_count < 4:
+            occupancy *= max(0.0, vehicle_count) / 4.0
+        return occupancy
 
     def slowness_term(self, avg_speed_kph, avg_speed_pps, vehicle_count):
         """1 = standing still, 0 = free flow. Empty road is not a jam."""
@@ -737,7 +775,7 @@ class CongestionModel:
 
     def score(self, occupancy_fraction, smoothed_count, avg_speed_kph,
               avg_speed_pps=None, vehicle_count=0):
-        occupancy = self.occupancy_term(occupancy_fraction)
+        occupancy = self.occupancy_term(occupancy_fraction, vehicle_count)
         load = min(1.0, max(0.0, smoothed_count / self.capacity))
         slowness = self.slowness_term(avg_speed_kph, avg_speed_pps, vehicle_count)
         value = (self.w_occupancy * occupancy + self.w_load * load + self.w_slowness * slowness)
@@ -1336,7 +1374,7 @@ class TrafficVisionSystem:
     def _register_crossings(self, tracks, now_iso):
         for track in tracks:
             previous = track.previous_centroid
-            if previous is None:
+            if previous is None or not self._in_roi(track.centroid):
                 continue
             for line in self.counting_lines:
                 if line.id in track.counted_lines:
@@ -1581,6 +1619,8 @@ class TrafficVisionSystem:
                      (int(line.end[0]), int(line.end[1])), (0, 255, 255), 2)
 
         for track in tracks:
+            if not self._in_roi(track.centroid):
+                continue
             x1, y1, x2, y2 = track.bbox
             color = colors.get(track.class_name, (200, 200, 200))
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
@@ -1749,7 +1789,10 @@ class TrafficVisionSystem:
             self.preview = None
         if self.grabber:
             self.grabber.release()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except cv2.error:
+            pass
         print("Resources released")
 
 
