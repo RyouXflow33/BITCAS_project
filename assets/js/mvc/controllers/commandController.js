@@ -68,6 +68,42 @@ function syncMapFullscreen(button, panel) {
     }
 }
 
+function askAdvisoryConfirm({ title, text, confirmLabel }) {
+    const modal = document.getElementById('advisoryConfirmModal');
+    const ok = document.getElementById('advisoryConfirmOk');
+    const cancel = document.getElementById('advisoryConfirmCancel');
+    if (!modal || !ok || !cancel) return Promise.resolve(false);
+
+    setText('advisoryConfirmTitle', title);
+    setText('advisoryConfirmText', text);
+    ok.textContent = confirmLabel;
+    modal.hidden = false;
+    cancel.focus();
+
+    return new Promise((resolve) => {
+        const close = (accepted) => {
+            modal.hidden = true;
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKey);
+            resolve(accepted);
+        };
+        const onOk = () => close(true);
+        const onCancel = () => close(false);
+        const onBackdrop = (event) => {
+            if (event.target === modal) close(false);
+        };
+        const onKey = (event) => {
+            if (event.key === 'Escape') close(false);
+        };
+        ok.addEventListener('click', onOk);
+        cancel.addEventListener('click', onCancel);
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKey);
+    });
+}
+
 function bindCommandActions() {
     const advisoryForm = document.getElementById('advisoryForm');
     if (advisoryForm) {
@@ -81,6 +117,13 @@ function bindCommandActions() {
                 setText('advisoryStatus', problem || 'Choose a congestion level.');
                 return;
             }
+
+            const accepted = await askAdvisoryConfirm({
+                title: 'Send this advisory?',
+                text: `${level} · ${area}\n${message}\n\nThis will be sent to driver phones.`,
+                confirmLabel: 'Broadcast'
+            });
+            if (!accepted) return;
 
             const button = advisoryForm.querySelector('button[type="submit"]');
             if (button) button.disabled = true;
@@ -134,6 +177,13 @@ function bindCommandActions() {
     const clearBtn = document.getElementById('clearAdvisoriesBtn');
     if (clearBtn) {
         clearBtn.addEventListener('click', async () => {
+            if (!(state.advisories || []).length) return;
+            const accepted = await askAdvisoryConfirm({
+                title: 'Clear recent advisories?',
+                text: 'This removes them from the desk list. Messages already sent to phones stay there.',
+                confirmLabel: 'Clear'
+            });
+            if (!accepted) return;
             setText('advisoryStatus', 'Clearing…');
             try {
                 await clearAdvisories();

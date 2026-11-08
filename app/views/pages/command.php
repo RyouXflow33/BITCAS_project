@@ -88,8 +88,19 @@
         </section>
 
         <section class="panel activity-panel">
-            <div class="panel-head"><div><h2><?= icon('inbox') ?> Recent advisories</h2><span>Driver phones</span></div><button class="btn tiny" id="clearAdvisoriesBtn"><?= icon('trash') ?> Clear</button></div>
+            <div class="panel-head"><div><h2><?= icon('inbox') ?> Recent advisories</h2><span>Driver phones</span></div><button class="btn tiny" id="clearAdvisoriesBtn" type="button"><?= icon('trash') ?> Clear</button></div>
             <div class="timeline" id="advisoryTimeline"></div>
         </section>
+    </div>
+</div>
+
+<div class="modal-backdrop" id="advisoryConfirmModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="advisoryConfirmTitle">
+        <h3 id="advisoryConfirmTitle">Send this advisory?</h3>
+        <p id="advisoryConfirmText"></p>
+        <div class="modal-actions">
+            <button class="btn ghost" id="advisoryConfirmCancel" type="button">Cancel</button>
+            <button class="btn primary" id="advisoryConfirmOk" type="button">Broadcast</button>
+        </div>
     </div>
 </div>
